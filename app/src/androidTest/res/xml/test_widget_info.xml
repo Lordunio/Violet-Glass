@@ -1,0 +1,2 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="80dp" android:minHeight="100dp" android:minResizeWidth="40dp" android:minResizeHeight="40dp" android:targetCellWidth="2" android:targetCellHeight="2" android:initialLayout="@layout/test_widget" android:previewLayout="@layout/test_widget_preview" android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" android:widgetFeatures="reconfigurable" android:configure="pl.violetglass.launcher.fixtures.TestWidgetConfigurationActivity" android:updatePeriodMillis="0" />
+

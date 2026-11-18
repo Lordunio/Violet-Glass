@@ -1,0 +1,1 @@
+Initial public build. Includes home screen customization, app categories, widgets, gestures, Home Assistant, backups and an optional desktop companion. The F-Droid variant omits Google Discover.

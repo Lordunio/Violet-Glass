@@ -1,0 +1,11 @@
+<resources>
+    <string name="notification_badges">Znaczniki powiadomień</string>
+    <string name="show_badges">Pokazuj znaczniki na ikonach</string>
+    <string name="badge_dot">Kropka</string>
+    <string name="badge_number">Licznik</string>
+    <string name="badge_count">Powiadomienia: %1$d</string>
+    <string name="badge_access_granted">Dostęp włączony. Znaczniki uwzględniają aktywne powiadomienia dozwolone przez aplikacje.</string>
+    <string name="badge_access_needed">Aby wyświetlać znaczniki, włącz dostęp do powiadomień w Androidzie. Launcher używa tylko metadanych aplikacji i liczby, nie zapisuje treści powiadomień.</string>
+    <string name="badge_access_settings">Dostęp do powiadomień w Androidzie</string>
+    <string name="badge_service_label">Violet Glass — znaczniki ikon</string>
+</resources>

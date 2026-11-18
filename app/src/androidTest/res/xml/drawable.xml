@@ -1,0 +1,5 @@
+<resources>
+    <category title="Test" />
+    <item drawable="test_icon_red" />
+    <item drawable="test_icon_green" />
+</resources>

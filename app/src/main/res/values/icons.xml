@@ -1,0 +1,14 @@
+<resources>
+    <string name="icon_pack">Paczka ikon</string>
+    <string name="system_icons">Ikony systemowe</string>
+    <string name="choose_icon_pack">Wybierz paczkę ikon</string>
+    <string name="icon_pack_missing">Paczka niedostępna — używane są ikony systemowe</string>
+    <string name="reset_icons">Przywróć wszystkie ikony systemowe</string>
+    <string name="no_icon_packs">Brak zainstalowanych paczek ikon.</string>
+    <string name="icon_pack_hint">Obsługiwane są paczki z mapowaniem appfilter (Nova, ADW, Apex). Brakujące ikony pozostają systemowe. Aby zmienić pojedynczą ikonę, przytrzymaj aplikację.</string>
+    <string name="change_icon">Zmień ikonę</string>
+    <string name="individual_icon_hint">Zmiana obejmuje tę aplikację na wszystkich pulpitach, w doku, folderach i liście aplikacji.</string>
+    <string name="default_icon">Z paczki domyślnej</string>
+    <string name="search_icons">Szukaj ikony po nazwie</string>
+    <string name="no_matching_icons">Brak ikon. Wybierz paczkę lub zmień wyszukiwanie.</string>
+</resources>

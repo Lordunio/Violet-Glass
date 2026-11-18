@@ -1,0 +1,25 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application>
+        <provider android:name="pl.violetglass.launcher.fixtures.TestPetPhotoProvider" android:authorities="pl.violetglass.launcher.test.petphoto" android:exported="true" />
+        <activity android:name="pl.violetglass.launcher.fixtures.TestNotificationActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <provider android:name="pl.violetglass.launcher.fixtures.NotificationFixtureProvider" android:authorities="pl.violetglass.launcher.test.notifications" android:exported="true" />
+        <provider android:name="pl.violetglass.launcher.fixtures.BackupFixtureProvider" android:authorities="pl.violetglass.launcher.test.backup" android:exported="true" />
+        <receiver android:name="pl.violetglass.launcher.fixtures.TestAlternativeWidgetProvider" android:exported="false" android:label="Drugi widget Violet">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/test_alternative_widget_info" />
+        </receiver>
+        <receiver android:name="pl.violetglass.launcher.fixtures.TestWidgetProvider" android:exported="false" android:label="@string/test_widget_label">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/test_widget_info" />
+        </receiver>
+        <activity android:name="pl.violetglass.launcher.fixtures.TestWidgetConfigurationActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+        <activity android:name="pl.violetglass.launcher.fixtures.TestLaunchActivity" android:exported="true" android:label="@string/test_app_label" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter><action android:name="com.novalauncher.THEME" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/test_shortcuts" />
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,5 @@
+Violet Glass to launcher Androida z konfigurowalnymi pulpitami, szklanym motywem i kategoriami aplikacji. Rozmieszczaj aplikacje, foldery i widgety, wybierz układ siatki i docka oraz otwieraj listę aplikacji gestem.
+
+Dodaj oddzielny panel ze swoim dashboardem Home Assistant. Włącz zwierzaka, efekty tapety albo obie opcje. Zwierzak porusza się po ikonach i widgetach. Po udzieleniu dostępu do powiadomień Androida może wyświetlać kopertę dla wybranych aplikacji.
+
+Układ i ustawienia można zapisać i przywrócić z pliku kopii.

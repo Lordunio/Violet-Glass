@@ -1,0 +1,1 @@
+Pierwsze wydanie publiczne. Pulpity, kategorie aplikacji, widgety, gesty, Home Assistant, kopie zapasowe i opcjonalny zwierzak. Wariant F-Droid nie zawiera integracji Google Discover.

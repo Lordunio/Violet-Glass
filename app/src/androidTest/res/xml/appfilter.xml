@@ -1,0 +1,4 @@
+<resources>
+    <item component="ComponentInfo{pl.violetglass.launcher.test/pl.violetglass.launcher.fixtures.TestLaunchActivity}" drawable="test_icon_red" />
+    <item component="ComponentInfo{com.android.settings/.Settings}" drawable="test_icon_red" />
+</resources>

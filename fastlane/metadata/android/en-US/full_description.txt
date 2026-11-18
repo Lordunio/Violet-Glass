@@ -1,0 +1,5 @@
+Violet Glass is an Android launcher with customizable home screens, a glass theme and app categories. Arrange apps, folders and widgets, choose a grid and dock, and open the app drawer with a swipe.
+
+Add a dedicated panel for your own Home Assistant dashboard. Enable a desktop companion, wallpaper effects or both. The companion moves around icons and widgets and can show an envelope for notifications from selected apps when Android notification access is granted.
+
+Export and restore your layout and preferences. The launcher interface is primarily in Polish.
