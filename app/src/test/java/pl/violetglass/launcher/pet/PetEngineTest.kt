@@ -257,6 +257,30 @@ class PetEngineTest {
         assertTrue(engine.state.feet.x in 0f..1000f)
         assertTrue(engine.state.feet.y <= 575f)
     }
+    @Test fun exhaustedPetRecoversFromLegacyZeroEvenWhileTheLauncherIsClosed() {
+        val start = 1000L
+        val hour = 3_600_000L
+        val empty = PetStats(energy = 0f, lastUpdatedTimestamp = start)
+        val resting = empty.advance(start + 4 * hour)
+        assertEquals(12f, resting.energy, 0f)
+        assertTrue(resting.needsRest)
+        val recovered = resting.advance(start + 8 * hour)
+        assertEquals(24f, recovered.energy, 0f)
+        assertFalse(recovered.needsRest)
+        assertEquals(24f, empty.advance(start + 2 * hour, plugged = true).energy, 0f)
+    }
+    @Test fun exhaustedPetSleepsDuringTheDayAndPettingRestoresEnergy() {
+        val engine = engine()
+        engine.restore(PetStats(energy = 0f, lastUpdatedTimestamp = 1000))
+        engine.environment(PowerState(80, false), false)
+        engine.tick(.02f, PetWeather.NONE, Offset.Zero)
+        assertEquals(PetMode.SLEEPING, engine.state.mode)
+        engine.pat(2000)
+        engine.tick(.02f, PetWeather.NONE, Offset.Zero)
+        assertEquals(24f, engine.state.stats.energy, 0f)
+        assertFalse(engine.state.stats.needsRest)
+        assertEquals(PetMode.HAPPY, engine.state.mode)
+    }
     @Test fun powerNightPettingAndNotificationSelectRealStates() {
         val engine = engine()
         engine.environment(PowerState(8, false), false); engine.tick(.02f, PetWeather.NONE, Offset.Zero)

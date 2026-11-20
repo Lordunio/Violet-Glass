@@ -48,15 +48,17 @@ class PetRepository(private val store: DataStore<Preferences>) {
         private val messageApps = stringSetPreferencesKey("message_apps")
         private val messagesOnly = booleanPreferencesKey("messages_only")
         private val energy = floatPreferencesKey("energy")
+        private val recovering = booleanPreferencesKey("recovering")
         private val happiness = floatPreferencesKey("happiness")
         private val cleanliness = floatPreferencesKey("cleanliness")
         private val updated = longPreferencesKey("updated")
         private inline fun <reified T : Enum<T>> enum(value: String?, default: T) = enumValues<T>().find { it.name == value } ?: default
         private fun stats(p: Preferences, now: Long) = PetStats(p[energy]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 80f,
             p[happiness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 80f,
-            p[cleanliness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 100f, p[updated] ?: now)
+            p[cleanliness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 100f, p[updated] ?: now, p[recovering] ?: false)
         private fun put(p: MutablePreferences, stats: PetStats) {
             p[energy] = stats.energy; p[happiness] = stats.happiness; p[cleanliness] = stats.cleanliness; p[updated] = stats.lastUpdatedTimestamp
+            p[recovering] = stats.recovering
         }
         private fun configuration(p: Preferences) = PetSettings(p[enabled] ?: false, enum(p[background], PetBackgroundMode.PHOTO_PARALLAX),
             enum(p[weather], PetWeather.AUTO), p[parallax] ?: true, enum(p[appearance], PetAppearance.PIXEL_CAT),
@@ -242,7 +244,11 @@ class PetEngine(seed: Int = 19) {
     }
     fun pat(now: Long) {
         happyFor = 2.5f
-        state = state.copy(stats = state.stats.advance(now, power.plugged, state.night).let { it.copy(happiness = (it.happiness + 3).coerceAtMost(100f)) })
+        advanceStats(now)
+        val stats = state.stats
+        val energy = if (stats.needsRest) RECOVERED_ENERGY else stats.energy
+        state = state.copy(stats = stats.copy(energy = energy, recovering = false,
+            happiness = (stats.happiness + 3).coerceAtMost(100f)))
     }
     fun clean(now: Long) { pat(now); state = state.copy(stats = state.stats.copy(cleanliness = 100f)) }
     fun notification() { notifications(1) }
@@ -270,7 +276,7 @@ class PetEngine(seed: Int = 19) {
         if(!state.visible) return
         happyFor = (happyFor - dt).coerceAtLeast(0f)
         hopCooldown = (hopCooldown - dt).coerceAtLeast(0f)
-        val sleeping = !power.plugged && (state.night || power.percent <= 12 || state.stats.energy <= 8)
+        val sleeping = !power.plugged && (state.night || power.percent <= 12 || state.stats.needsRest)
         val stationary = sleeping || power.plugged || happyFor > 0
         var feet = state.feet
         val calm = options.motion == PetMotion.CALM

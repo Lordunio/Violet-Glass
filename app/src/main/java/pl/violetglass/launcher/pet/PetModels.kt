@@ -31,12 +31,19 @@ internal const val PET_REST_DOCK = "dock"
 internal fun petRestItem(id: String) = "item:$id"
 private fun Float.safe(min: Float, max: Float, fallback: Float) = if(isFinite()) coerceIn(min, max) else fallback
 data class PowerState(val percent: Int = 100, val plugged: Boolean = false)
+private const val EXHAUSTED_ENERGY = 8f
+internal const val RECOVERED_ENERGY = 24f
 data class PetStats(val energy: Float = 80f, val happiness: Float = 80f, val cleanliness: Float = 100f,
-    val lastUpdatedTimestamp: Long = System.currentTimeMillis()) {
-    /** Offline time has neutral decay; an unseen charging history is never invented. */
+    val lastUpdatedTimestamp: Long = System.currentTimeMillis(), val recovering: Boolean = false) {
+    val needsRest: Boolean get() = energy <= EXHAUSTED_ENERGY || recovering && energy < RECOVERED_ENERGY
+
+    /** Offline exhaustion follows the same recovery rule, without assuming a charging history. */
     fun advance(now: Long, plugged: Boolean = false, sleeping: Boolean = false): PetStats {
         val hours = (max(0L, now - lastUpdatedTimestamp).coerceAtMost(30L * 86_400_000) / 3_600_000.0).toFloat()
-        return copy(energy = (energy + hours * if(plugged) 12f else if(sleeping) 3f else -1.2f).coerceIn(0f, 100f),
+        val rate = when { plugged -> 12f; sleeping || needsRest -> 3f; else -> -1.2f }
+        val nextEnergy = (energy + hours * rate).coerceIn(0f, 100f)
+        val nextRecovering = if (needsRest) nextEnergy < RECOVERED_ENERGY else nextEnergy <= EXHAUSTED_ENERGY
+        return copy(energy = nextEnergy, recovering = nextRecovering,
             happiness = (happiness - hours * 1.5f).coerceIn(0f, 100f), cleanliness = (cleanliness - hours * .8f).coerceIn(0f, 100f),
             lastUpdatedTimestamp = max(now, lastUpdatedTimestamp))
     }

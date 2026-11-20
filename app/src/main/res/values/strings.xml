@@ -48,6 +48,7 @@
     <string name="pet_rain">Deszcz odbijający się od ikon</string>
     <string name="pet_fireflies">Świetliki</string>
     <string name="pet_stats">Energia: %1$d · Radość: %2$d · Czystość: %3$d</string>
+    <string name="pet_energy_recovery">Zwierzak odpoczywa. Pogłaszcz go, aby od razu uzupełnić energię.</string>
     <string name="pet_pat">Pogłaszcz zwierzaka</string>
     <string name="pet_clean">Wyczyść</string>
     <string name="pet_notification_access">Dostęp do powiadomień dla kuriera</string>

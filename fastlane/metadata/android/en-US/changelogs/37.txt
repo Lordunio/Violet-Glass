@@ -1,0 +1,1 @@
+Exhausted pets recover energy while sleeping. Petting an exhausted companion can restore its energy immediately.

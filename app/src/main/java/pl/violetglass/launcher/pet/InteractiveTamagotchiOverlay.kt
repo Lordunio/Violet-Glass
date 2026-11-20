@@ -448,6 +448,9 @@ fun PetControls(model: PetViewModel) {
             else stringResource(R.string.pet_messages_choose, settings.messageApps.size))
     }
     Text(stringResource(R.string.pet_stats, state.stats.energy.roundToInt(), state.stats.happiness.roundToInt(), state.stats.cleanliness.roundToInt()), modifier = Modifier.testTag("petStats"))
+    if (state.stats.needsRest) {
+        Text(stringResource(R.string.pet_energy_recovery), style = MaterialTheme.typography.bodySmall)
+    }
     Row { TextButton(onClick = model::pat, modifier = Modifier.testTag("petPat")) { Text(stringResource(R.string.pet_pat)) }
         TextButton(onClick = model::clean, modifier = Modifier.testTag("petClean")) { Text(stringResource(R.string.pet_clean)) } }
     if(!BadgeStore.hasAccess(context)) TextButton(onClick = { runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) } }) {

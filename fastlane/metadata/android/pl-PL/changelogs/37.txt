@@ -1,0 +1,1 @@
+Zwierzak odzyskuje energię, gdy śpi z wyczerpania. Możesz też od razu przywrócić mu energię opcją „Pogłaszcz”.
