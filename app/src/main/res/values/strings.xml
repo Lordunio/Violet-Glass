@@ -341,6 +341,12 @@
     <string name="backup_busy">Trwa obsługa kopii…</string>
     <string name="backup_nova">Import kopii Nova Launcher nie jest obsługiwany. Wybierz kopię Violet Glass JSON v1 lub v2.</string>
     <string name="discover_google_app">Otwórz osobną aplikację Google</string>
+    <string name="unlock_layout">Odblokuj układ pulpitu</string>
+    <string name="glass_preview">Podgląd szuflady na tapecie</string>
+    <string name="glass_undo">Cofnij</string>
+    <string name="glass_sample_short">Mapy</string>
+    <string name="glass_sample_long">Pamięć\ntelefonu</string>
+    <string name="preview_glass_disabled">Liquid Glass dla szuflady jest wyłączony.</string>
 </resources>
 
 

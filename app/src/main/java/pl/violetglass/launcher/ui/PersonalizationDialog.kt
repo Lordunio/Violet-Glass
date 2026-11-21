@@ -56,7 +56,7 @@ fun actionLabel(action: GestureAction) = stringResource(when(action) {
 @Composable
 fun PersonalizationDialog(model: LauncherViewModel, apps: List<LauncherApp>, systemActions: SystemActions,
     onDismiss: () -> Unit, onGrid: () -> Unit, onWidgets: () -> Unit,
-    initialSection: String? = null,
+    onGlassPreview: () -> Unit, initialSection: String? = null,
 ) {
     val prefs = LocalLauncherPreferences.current
     val pendingBundle by model.pendingWidget.collectAsStateWithLifecycle()
@@ -156,7 +156,7 @@ fun PersonalizationDialog(model: LauncherViewModel, apps: List<LauncherApp>, sys
                                 TextButton(onClick = { onDismiss(); onWidgets() }, modifier = Modifier.testTag("addWidgetFromSettings")) { Text(stringResource(R.string.add_widget)) }
                                 if (pendingBundle != null) TextButton(onClick = model::cancelWidget, enabled = model.pending()?.stage != "commit") { Text(stringResource(R.string.cancel_widget)) }
                             }
-                            Section.GLASS -> GlassControls(prefs.glass) { change -> model.updatePreferences { p -> p.copy(glass = change(p.glass)) } }
+                            Section.GLASS -> GlassControls(prefs.glass, onGlassPreview) { change -> model.updatePreferences { p -> p.copy(glass = change(p.glass)) } }
                             Section.PERFORMANCE -> PerformanceControls(prefs.glass) { change -> model.updatePreferences { p -> p.copy(glass = change(p.glass)) } }
                             Section.HA -> {
                                 HaSettingsControls(prefs.ha) { value -> model.updatePreferences { p -> p.copy(ha = value) } }

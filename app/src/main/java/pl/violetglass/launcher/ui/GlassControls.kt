@@ -20,7 +20,10 @@ fun glassTargetLabel(target: GlassTarget): String = stringResource(when (target)
 fun glassModeLabel(mode: GlassMode): String = when(mode) { GlassMode.ULTRA -> "Ultra Glass"; GlassMode.CLASSIC -> "Classic Glass"; GlassMode.LITE -> "Lite" }
 
 @Composable
-fun GlassControls(settings: GlassSettings, update: ((GlassSettings) -> GlassSettings) -> Unit) {
+fun GlassControls(settings: GlassSettings, onPreview: () -> Unit, update: ((GlassSettings) -> GlassSettings) -> Unit) {
+    FilledTonalButton(onClick = onPreview, modifier = Modifier.testTag("glassPreviewOpen")) {
+        Text(stringResource(R.string.glass_preview))
+    }
     Toggle(stringResource(R.string.glass_enabled), settings.enabled, "glassEnabled") { update { g -> g.copy(enabled = it) } }
     Text(stringResource(R.string.glass_off_hint), style = MaterialTheme.typography.bodySmall)
     // Keep controls available while globally disabled; restoring Glass preserves every choice.

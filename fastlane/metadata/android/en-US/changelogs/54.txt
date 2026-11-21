@@ -1,0 +1,1 @@
+Preview the glass app drawer on your wallpaper, adjust transparency, undo and save. Long-press the desktop to lock or unlock its layout. The search hint now has a contrasting outline when the field is transparent.

@@ -10,7 +10,9 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -31,6 +33,17 @@ internal fun drawerTextShadow(target: GlassTarget = GlassTarget.DRAWER): Shadow?
     val radius = with(androidx.compose.ui.platform.LocalDensity.current) { 1.4.dp.toPx() }
     return Shadow(MaterialTheme.colorScheme.surface.copy(alpha = settings.transparency / 100f), blurRadius = radius)
 }
+@Composable
+internal fun DrawerSearchHint(modifier: Modifier = Modifier) {
+    val glass = LocalLauncherPreferences.current.glass
+    val outlined = LocalGlassPolicy.current.enabled && GlassTarget.SEARCH !in glass.disabledTargets && glass.transparency > 0
+    val style = MaterialTheme.typography.bodyLarge.copy(
+        color = if (outlined) Color.White else MaterialTheme.colorScheme.onSurface,
+        fontWeight = FontWeight.Medium,
+    )
+    DrawerAppLabel(stringResource(R.string.search_apps), modifier, style, outlined, maxLines = 1, singleWordSize = null)
+}
+
 @Composable
 internal fun DrawerAction(onClick: () -> Unit, modifier: Modifier, label: String) {
     val colors = MaterialTheme.colorScheme

@@ -51,6 +51,40 @@ class GlassRenderTest {
         }
     }
 
+    @Test fun searchHintKeepsLightAndDarkLetterEdgesAtHighTransparency() {
+        var transparency by mutableIntStateOf(75)
+        compose.setContent {
+            val glass = GlassSettings(mode = GlassMode.LITE, transparency = transparency)
+            CompositionLocalProvider(LocalLauncherPreferences provides LauncherPreferences(glass = glass),
+                LocalGlassPolicy provides resolveGlass(glass, GlassEnvironment())) {
+                VioletTheme(ThemeMode.LIGHT) {
+                    Column {
+                        listOf(Color.Black, Color.White, Color(0xFF675577)).forEachIndexed { index, background ->
+                            Box(Modifier.background(background)) {
+                                GlassSurface(GlassTarget.SEARCH) {
+                                    DrawerSearchHint(Modifier.padding(10.dp).testTag("hint$index"))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (level in listOf(75, 100)) {
+            compose.runOnIdle { transparency = level }
+            repeat(3) { index ->
+                val pixels = compose.onNodeWithTag("hint$index").captureToImage().toPixelMap()
+                var edges = 0
+                for (y in 0 until pixels.height) for (x in 1 until pixels.width) {
+                    val a = pixels[x - 1, y].luminance()
+                    val b = pixels[x, y].luminance()
+                    if ((maxOf(a, b) + .05f) / (minOf(a, b) + .05f) >= 4.5f) edges++
+                }
+                assertTrue("Search hint on background $index at $level%: $edges edges", edges >= 20)
+            }
+        }
+    }
+
     @Test fun drawerAndSearchUseTheFullTransparencyRange() {
         var transparency by mutableIntStateOf(0)
         compose.setContent {

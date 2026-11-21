@@ -315,6 +315,35 @@ class PersonalizationUiTest {
         assertTrue(label.fetchSemanticsNode().boundsInRoot.height >= measured.size.height - 1f)
     }
 
+    @Test fun desktopLockAllowsDrawerAndUnlock() {
+        compose.openDesktopOptions()
+        compose.onNodeWithTag("desktopLock").performClick()
+        waitPreferences { it.locked }
+        compose.openDrawer()
+        compose.onNodeWithTag("appsGrid").assertIsDisplayed()
+        compose.onNodeWithTag("homeButton").performClick()
+        compose.openDesktopOptions()
+        compose.onNodeWithTag("desktopGrid").assertIsNotEnabled()
+        compose.onNodeWithTag("desktopLock").performClick()
+        waitPreferences { !it.locked }
+    }
+
+    @Test fun glassPreviewUndoAndSave() {
+        val original = model.preferences.value.glass.transparency
+        val target = if (original == 90) 10 else 90
+        openSection("GLASS")
+        compose.onNodeWithTag("glassPreviewOpen").performClick()
+        val slider = compose.onNodeWithTag("previewSlider")
+        slider.performSemanticsAction(SemanticsActions.SetProgress) { it(target.toFloat()) }
+        compose.onNodeWithTag("previewUndo").performClick()
+        compose.onNodeWithTag("previewUndo").assertIsNotEnabled()
+        assertEquals(original, model.preferences.value.glass.transparency)
+        slider.performSemanticsAction(SemanticsActions.SetProgress) { it(target.toFloat()) }
+        compose.onNodeWithTag("previewSave").performClick()
+        waitPreferences { it.glass.transparency == target }
+        compose.onNodeWithTag("glassPreviewOpen").assertIsDisplayed()
+    }
+
     @Test fun layoutLockDisablesAddingFromDrawer() {
         openSection("DESKTOP")
         compose.onNodeWithTag("lockLayout").performClick()
@@ -385,7 +414,7 @@ class PersonalizationUiTest {
                 val style = textLayout(node).layoutInput.style
                 assertEquals(label, Color.Unspecified, style.background)
                 val luminance = style.color.luminance()
-                assertTrue(label, if (dark) luminance > .65f else luminance < .15f)
+                assertTrue(label, if (dark || label == compose.activity.getString(R.string.search_apps)) luminance > .65f else luminance < .15f)
             }
             val heading = compose.onNodeWithText(compose.activity.getString(R.string.all_apps), useUnmergedTree = true)
                 .fetchSemanticsNode().boundsInRoot

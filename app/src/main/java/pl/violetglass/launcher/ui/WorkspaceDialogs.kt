@@ -73,7 +73,7 @@ fun LayoutDialog(config: LayoutConfig, onDismiss: () -> Unit, onSave: (Int, Int,
             NumberRow(stringResource(R.string.dock_slots), dock, 3..7, "dockSlots") { dock = it }
             Text(stringResource(R.string.grid_reflow), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { onDismiss(); onNewFolder() }, enabled = !locked, modifier = Modifier.testTag("newFolder")) { Text(stringResource(R.string.new_folder)) }
-            if (config.pages > 1) TextButton(onClick = { onRemovePage(); onDismiss() }) { Text(stringResource(R.string.remove_last_page)) }
+            if (config.pages > 1) TextButton(enabled = !locked, onClick = { onRemovePage(); onDismiss() }) { Text(stringResource(R.string.remove_last_page)) }
             TextButton(onClick = { onDismiss(); onWidgets() }, enabled = !locked, modifier = Modifier.testTag("addWidget")) { Text(stringResource(R.string.add_widget)) }
             TextButton(onClick = { onDismiss(); onPersonalization() }, modifier = Modifier.testTag("advancedSettings")) { Text(stringResource(R.string.personalization)) }
             if (locked) Text(stringResource(R.string.layout_locked))

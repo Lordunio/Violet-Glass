@@ -81,6 +81,12 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     val widgetController = LocalWidgetController.current
     var personalization by rememberSaveable { mutableStateOf(false) }
     var settingsSection by rememberSaveable { mutableStateOf<String?>(null) }
+    var preview by rememberSaveable { mutableStateOf(false) }
+    val closePreview = {
+        preview = false
+        settingsSection = "GLASS"
+        personalization = true
+    }
     var desktopOptions by remember { mutableStateOf(false) }
     var folderArea by remember { mutableStateOf(Rect.Zero) }
     var widgetPicker by remember { mutableStateOf(false) }
@@ -249,7 +255,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             showApps = false; query = ""; folderId = null; placement = null; drag = null
             menu = null; rename = null; layoutDialog = false; newFolder = false; removeFolder = null
             personalization = false; widgetPicker = false; resizingWidget = null
-            desktopOptions = false
+            desktopOptions = false; preview = false
             panelDragging = false
             pager.scrollToPage(pages.firstDesktop)
         }
@@ -261,6 +267,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     }
     BackHandler {
         when {
+            preview -> closePreview()
             showGame && gameLocked -> gameLocked = false
             !onDesktop -> goHome()
             drag != null -> drag = null
@@ -380,7 +387,8 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     })
     val performGesture by rememberUpdatedState<(DesktopGesture) -> Unit>({ gesture ->
         val binding = prefs.gestures[gesture] ?: GestureBinding()
-        when(binding.action) {
+        val action = if (prefs.locked && gesture == DesktopGesture.LONG_PRESS) GestureAction.SETTINGS else binding.action
+        when(action) {
             GestureAction.APPS -> { query = ""; showApps = true }
             GestureAction.SEARCH -> { query = ""; showApps = true; searchRequested = true }
             GestureAction.SETTINGS -> if (gesture == DesktopGesture.LONG_PRESS) desktopOptions = true else personalization = true
@@ -396,7 +404,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     val pagerPosition = pager.currentPage + pager.currentPageOffsetFraction
     val petSceneLeft = (pages.firstDesktop - pagerPosition).coerceIn(0f, 1f)
     val petSceneRight = (pages.lastDesktop + 1f - pagerPosition).coerceIn(0f, 1f)
-    val petActive = petSettings.sceneEnabled && layout != null && !showApps && petSceneLeft < petSceneRight &&
+    val petActive = !preview && petSettings.sceneEnabled && layout != null && !showApps && petSceneLeft < petSceneRight &&
         !desktopOptions && !personalization && folderId == null && drag == null && placement == null &&
         !widgetPicker && !layoutDialog && menu == null && rename == null && !newFolder && removeFolder == null && resizingWidget == null && editingIcon == null
     val petVisible by rememberUpdatedState(petActive && !pager.isScrollInProgress && onDesktop)
@@ -410,20 +418,22 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     val hopDestination = pager.settledPage + if (hopDelta >= 0f) 1 else -1
     val desktopHop = pager.isScrollInProgress && hopDestination in 0 until pages.count &&
         (pager.settledPage in pages.firstDesktop..pages.lastDesktop || hopDestination in pages.firstDesktop..pages.lastDesktop)
-    Box(Modifier.fillMaxSize().testTag("launcherRoot").pointerInput(Unit) {
+    Box(Modifier.fillMaxSize().testTag("launcherRoot").pointerInput(preview) {
+        if (preview) return@pointerInput
         detectLauncherDrag(
             acceptsConsumed = { nativeWidgetAt(it) },
             onStart = { beginDrag(it) }, onDrag = { updateDrag(it) },
             onEnd = { endDrag() }, onCancel = { drag = null },
         )
-    }.pointerInput(Unit) {
+    }.pointerInput(preview) {
+        if (preview) return@pointerInput
         detectDesktopGestures({ gestureEligible(it) }, { verticalGestures() || iconAt(it) }, { performGesture(it) }, { swipeEligible(it) },
             onPinch = { desktopOptions = true },
             onTap = { point -> if(petVisible) { val touched = pet.hit(point); pet.touch(point); if(touched) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove) } },
             interceptTap = { point -> petVisible && !nativeWidgetAt(point) && pet.hit(point) })
     }) {
         HorizontalPager(pager, beyondViewportPageCount = 2,
-            key = { pages.key(it) }, userScrollEnabled = !gameLocked && drag == null && placement == null && !showApps && folderId == null,
+            key = { pages.key(it) }, userScrollEnabled = !preview && !gameLocked && drag == null && placement == null && !showApps && folderId == null,
             modifier = Modifier.fillMaxSize().testTag("screenPager")) { screen ->
         if (pages.kind(screen) == LauncherPage.DESKTOP) {
         val inactiveRegistry = remember(screen) { DragRegistry() }
@@ -455,7 +465,13 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             Box(Modifier.fillMaxSize()) {
             InteractiveWallpaperLayer(pet, petSettings, Modifier.fillMaxSize().recordGlassBackdrop(wallpaperBackdrop))
             Column(Modifier.fillMaxSize().padding(insets).imePadding().padding(horizontal = prefs.margin.dp)) {
-                if (drawerHere) {
+                if (preview && screen == pager.currentPage) {
+                    GlassDrawerPreview(state.apps.filter { it.key !in prefs.hiddenApps }, model.repository, state.revision,
+                        onCancel = closePreview, onSave = { value ->
+                            model.updatePreferences { it.copy(glass = it.glass.copy(transparency = value)) }
+                            closePreview()
+                        })
+                } else if (drawerHere) {
                     GlassSurface(GlassTarget.DRAWER, Modifier.weight(1f).fillMaxWidth()) {
                     Column(Modifier.fillMaxSize().padding(12.dp)) {
                     val textShadow = drawerTextShadow()
@@ -470,7 +486,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                     val searchShadow = drawerTextShadow(GlassTarget.SEARCH)
                     TextField(query, { query = it }, singleLine = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(shadow = searchShadow),
-                        placeholder = { Text(stringResource(R.string.search_apps), style = LocalTextStyle.current.copy(shadow = searchShadow)) },
+                        placeholder = { DrawerSearchHint() },
                         colors = TextFieldDefaults.colors(focusedTextColor = searchText, unfocusedTextColor = searchText,
                             focusedPlaceholderColor = searchText, unfocusedPlaceholderColor = searchText,
                             focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
@@ -623,6 +639,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
         onLayout = { desktopOptions = false; layoutDialog = true }, onWidgets = { desktopOptions = false; widgetPicker = true },
         onWallpaper = { desktopOptions = false; systemActions.execute(GestureBinding(GestureAction.WALLPAPER)) },
         onAddPage = { desktopOptions = false; pendingPage = layout?.config?.pages; model.editLayout(LayoutEngine::addPage) },
+        locked = prefs.locked, onToggleLock = { model.updatePreferences { it.copy(locked = !it.locked) }; desktopOptions = false },
         canAddPage = layout != null && layout.config.pages < 10 && !prefs.locked,
         onDefault = requestDefault, isDefault = isDefault)
     if(showApps && editDrawerCategories) {
@@ -644,7 +661,13 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             }, onDismiss = { editDrawerCategories = false })
     }
     if (personalization) PersonalizationDialog(model, state.apps, systemActions, { personalization = false; settingsSection = null },
-        { layoutDialog = true }, { widgetPicker = true }, initialSection = settingsSection)
+        { layoutDialog = true }, { widgetPicker = true }, onGlassPreview = {
+            scope.launch {
+                if (!onDesktop) pager.scrollToPage(pages.firstDesktop)
+                personalization = false
+                preview = true
+            }
+        }, initialSection = settingsSection)
     if (widgetPicker && widgetController != null) WidgetPicker(widgetController, desktopPage, { widgetPicker = false })
     if (layout != null) {
         editingIcon?.let { payload -> payload.appKey?.let { key -> IndividualIconPicker(model, key, payload.title) { editingIcon = null } } }

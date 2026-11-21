@@ -321,6 +321,15 @@ internal fun DrawerAppLabel(name: String, modifier: Modifier, style: TextStyle, 
         autoSize = if (wraps) null else singleWordSize)
 }
 @Composable
+internal fun drawerLabelsOutlined(prefs: LauncherPreferences) = LocalGlassPolicy.current.enabled && GlassTarget.DRAWER !in prefs.glass.disabledTargets &&
+        prefs.glass.transparency > 0
+
+@Composable
+internal fun drawerLabelStyle(prefs: LauncherPreferences, outlined: Boolean) = workspaceLabelStyle(prefs).copy(lineBreak = LineBreak.Heading,
+        color = if (outlined) Color.White else LocalContentColor.current, fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center)
+
+@Composable
 fun AppDrawer(
     apps: List<LauncherApp>, repository: AppsRepository, revision: Long, registry: DragRegistry,
     onLaunch: (LauncherApp) -> Unit, onMenu: (ItemPayload) -> Unit, modifier: Modifier = Modifier,
@@ -328,11 +337,8 @@ fun AppDrawer(
 ) {
     val options = stringResource(R.string.item_options)
     val prefs = LocalLauncherPreferences.current
-    val outlined = LocalGlassPolicy.current.enabled && GlassTarget.DRAWER !in prefs.glass.disabledTargets &&
-        prefs.glass.transparency > 0
-    val labelStyle = workspaceLabelStyle(prefs).copy(lineBreak = LineBreak.Heading,
-        color = if (outlined) Color.White else LocalContentColor.current, fontWeight = FontWeight.Medium,
-        textAlign = TextAlign.Center)
+    val outlined = drawerLabelsOutlined(prefs)
+    val labelStyle = drawerLabelStyle(prefs, outlined)
     val singleWordSize = remember(prefs.labelSize) {
         if (prefs.labelSize > 10) TextAutoSize.StepBased((prefs.labelSize - 2).coerceAtLeast(10).sp, prefs.labelSize.sp, .5.sp)
         else null
