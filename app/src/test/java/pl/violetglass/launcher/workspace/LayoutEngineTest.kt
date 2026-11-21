@@ -4,6 +4,52 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LayoutEngineTest {
+    @Test fun enlargedFolderReservesFourCellsAndKeepsChildrenWhenMovedOrShrunk() {
+        val folder = LayoutItem("folder", title = "Folder", container = pageContainer(0), position = 3)
+        val child = app("child", 0, folderContainer(folder.id))
+        val original = LayoutState(LayoutConfig(pages = 2), listOf(folder, child))
+        val expanded = LayoutEngine.resizeFolder(original, folder.id, true)
+        val enlarged = expanded.items.single { it.id == folder.id }
+        assertEquals(setOf(2, 3, 6, 7), occupiedCells(enlarged, expanded.config))
+        assertEquals(enlarged, expanded.at(pageContainer(0), 7))
+        val filled = LayoutEngine.place(expanded, ItemPayload(appKey = "0:com.new/Main", title = "New"), Slot(pageContainer(0), 7))
+        assertEquals(2, filled.children(folder.id).size)
+        val moved = LayoutEngine.place(filled, payload(folder.id), Slot(pageContainer(1), 4))
+        val reflowed = LayoutEngine.resize(moved, 3, 5, 5)
+        assertTrue(reflowed.items.single { it.id == folder.id }.isExpandedFolder)
+        val shrunk = LayoutEngine.resizeFolder(reflowed, folder.id, false)
+        val compact = shrunk.items.single { it.id == folder.id }
+        assertEquals(setOf(compact.position), occupiedCells(compact, shrunk.config))
+        assertEquals(filled.children(folder.id), shrunk.children(folder.id))
+    }
+
+    @Test fun enlargementWithoutRoomLeavesExistingShortcutsInPlace() {
+        val config = LayoutConfig(columns = 3, rows = 3)
+        val folder = LayoutItem("folder", title = "Folder", container = pageContainer(0), position = 0)
+        val occupied = (1 until config.capacity).map { app("occupied-$it", it) }
+        val original = LayoutState(config, listOf(folder) + occupied)
+        rejected(LayoutRejected.Reason.FULL) { LayoutEngine.resizeFolder(original, folder.id, true) }
+        assertEquals(occupied, original.items.drop(1))
+    }
+
+    @Test fun autoAddedAppSkipsWidgetsAndAvoidsDuplicatePackages() {
+        val widget = LayoutItem("widget", title = "Widget", provider = "demo.widgets/.Tile", widgetId = 4,
+            container = pageContainer(0), position = 0, spanX = 2, spanY = 2)
+        val state = LayoutState(items = listOf(widget, app("existing", 0, DOCK)))
+        assertEquals(state, LayoutEngine.addNewApp(state, "0:com.test/Alternate", "Already pinned"))
+        val placed = LayoutEngine.addNewApp(state, "0:com.new/Main", "New app")
+        assertEquals("0:com.new/Main", placed.at(pageContainer(0), 2)?.appKey)
+        assertEquals(widget, placed.at(pageContainer(0), 1))
+    }
+
+    @Test fun autoAddedAppCreatesAnotherDesktopWhenTheCurrentOneIsFull() {
+        val config = LayoutConfig(columns = 3, rows = 3)
+        val full = LayoutState(config, (0 until config.capacity).map { app("filled-$it", it) })
+        val next = LayoutEngine.addNewApp(full, "0:com.new/Main", "New app")
+        assertEquals(2, next.config.pages)
+        assertEquals("0:com.new/Main", next.at(pageContainer(1), 0)?.appKey)
+    }
+
     @Test fun removingMiddleFolderChildCompactsOnlyThatFolderInExistingOrder() {
         val folder = LayoutItem("f", title = "Folder", container = DOCK, position = 2)
         val state = LayoutState(items = listOf(folder, app("a", 0, "folder:f"), app("b", 1, "folder:f"), app("c", 4, "folder:f"), app("desktop", 9)))

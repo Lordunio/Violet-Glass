@@ -57,7 +57,7 @@ object LayoutEngine {
             LayoutItem(UUID.randomUUID().toString(), title = payload.title.take(48), appKey = payload.appKey,
                 container = target.container, position = target.position)
         }
-        if (incoming.isWidget) {
+        if (incoming.occupiesRectangle) {
             val moved = incoming.copy(container = target.container, position = target.position)
             if (!target.container.startsWith("page:") || !fits(state, moved)) reject(LayoutRejected.Reason.FULL)
             return state.copy(items = state.items.map { if (it.id == moved.id) moved else it }).also(::validate)
@@ -82,6 +82,7 @@ object LayoutEngine {
             }
         } else {
             if (occupant != null) {
+                if (occupant.isExpandedFolder) reject(LayoutRejected.Reason.FULL)
                 if (payload.itemId == null || (occupant.isFolder && incoming.container.startsWith("folder:"))) reject(LayoutRejected.Reason.FULL)
                 result.removeAll { it.id == occupant.id }
                 result.add(occupant.copy(container = incoming.container, position = incoming.position))
@@ -117,6 +118,21 @@ object LayoutEngine {
         return state.copy(items = state.items + LayoutItem(UUID.randomUUID().toString(), title = title.trim().ifEmpty { "Folder" }.take(48), container = container, position = slot.position)).also(::validate)
     }
 
+    fun resizeFolder(state: LayoutState, id: String, expanded: Boolean): LayoutState {
+        val folder = state.items.find { it.id == id && it.isFolder && it.container.startsWith("page:") } ?: reject()
+        val span = if (expanded) 2 else 1
+        val resized = folder.copy(spanX = span, spanY = span)
+        val next = if (fits(state, resized)) resized else {
+            val columns = state.config.columns
+            val origin = folder.position
+            (0 until state.config.capacity).asSequence()
+                .sortedBy { kotlin.math.abs(it / columns - origin / columns) + kotlin.math.abs(it % columns - origin % columns) }
+                .map { resized.copy(position = it) }
+                .firstOrNull { fits(state, it) } ?: reject(LayoutRejected.Reason.FULL)
+        }
+        return state.copy(items = state.items.map { if (it.id == id) next else it }).also(::validate)
+    }
+
     fun rename(state: LayoutState, id: String, title: String): LayoutState {
         val name = title.trim().take(48)
         if (name.isBlank() || state.items.none { it.id == id }) reject()
@@ -127,14 +143,29 @@ object LayoutEngine {
         items = state.items.filterNot { it.id == id || it.container == folderContainer(id) },
     ), setOfNotNull(state.items.find { it.id == id }?.container)).also(::validate)
 
+    private fun appPackage(key: String?) = key?.substringAfter(':')?.substringBefore('/')
+
+    fun addNewApp(state: LayoutState, appKey: String, title: String): LayoutState {
+        if (state.items.any { appPackage(it.appKey) == appPackage(appKey) }) return state
+        for (page in 0 until state.config.pages) {
+            val container = pageContainer(page)
+            val position = (0 until state.config.capacity).firstOrNull { state.at(container, it) == null } ?: continue
+            return place(state, ItemPayload(appKey = appKey, title = title), Slot(container, position), merge = false)
+        }
+        if (state.config.pages >= MAX_PAGES) return state
+        return place(addPage(state), ItemPayload(appKey = appKey, title = title), Slot(pageContainer(state.config.pages), 0), merge = false)
+    }
+
     fun removePackage(state: LayoutState, packageName: String): LayoutState {
-        val removed = state.items.filter { it.appKey?.substringAfter(':')?.substringBefore('/') == packageName }
+        val removed = state.items.filter { appPackage(it.appKey) == packageName }
         val ids = removed.mapTo(HashSet()) { it.id }
         return compactFolders(state.copy(items = state.items.filterNot { it.id in ids }), removed.mapTo(HashSet()) { it.container }).also(::validate)
     }
 
+    private const val MAX_PAGES = 10
+
     fun addPage(state: LayoutState): LayoutState {
-        if (state.config.pages >= 10) reject(LayoutRejected.Reason.LIMIT)
+        if (state.config.pages >= MAX_PAGES) reject(LayoutRejected.Reason.LIMIT)
         return state.copy(config = state.config.copy(pages = state.config.pages + 1))
     }
 
@@ -158,7 +189,7 @@ object LayoutEngine {
             val col = original.position % state.config.columns
             val row = original.position / state.config.columns
             val fitsGrid = col + item.spanX <= columns && row + item.spanY <= rows
-            if (fitsGrid && (if(item.isWidget) fits(next, item) else next.at(item.container, item.position) == null))
+            if (fitsGrid && (if(item.occupiesRectangle) fits(next, item) else next.at(item.container, item.position) == null))
                 next = next.copy(items = next.items + item)
             else deferred += original
         }
@@ -167,7 +198,7 @@ object LayoutEngine {
             val firstPage = if(item.container.startsWith("page:")) item.container.removePrefix("page:").toInt() else 0
             while (placed == null) {
                 for (page in firstPage until next.config.pages) {
-                    placed = if (item.isWidget) runCatching { firstRectangle(next, item, pageContainer(page)) }.getOrNull()
+                    placed = if (item.occupiesRectangle) runCatching { firstRectangle(next, item, pageContainer(page)) }.getOrNull()
                     else runCatching { firstFree(next, pageContainer(page)) }.getOrNull()?.let { item.copy(container = it.container, position = it.position) }
                     if (placed != null) break
                 }
@@ -183,7 +214,7 @@ object LayoutEngine {
 
     fun validate(state: LayoutState) {
         val config = state.config
-        if (config.id != 0 || config.columns !in 3..8 || config.rows !in 3..8 || config.pages !in 1..10 || config.dockSlots !in 3..7) reject()
+        if (config.id != 0 || config.columns !in 3..8 || config.rows !in 3..8 || config.pages !in 1..MAX_PAGES || config.dockSlots !in 3..7) reject()
         if (state.items.map { it.id }.distinct().size != state.items.size) reject()
         val widgetIds = state.items.mapNotNull { it.widgetId }
         if (widgetIds.distinct().size != widgetIds.size) reject()
@@ -193,6 +224,8 @@ object LayoutEngine {
             if (item.isFolder && item.container.startsWith("folder:")) reject()
             if (item.isWidget) {
                 if (item.widgetId != null && item.widgetId <= 0 || item.provider.isNullOrBlank() || item.appKey != null || !fits(state, item)) reject()
+            } else if (item.isExpandedFolder) {
+                if (!fits(state, item)) reject()
             } else if (item.spanX != 1 || item.spanY != 1) reject()
             for (cell in occupiedCells(item, config)) if (!occupied.add(item.container to cell)) reject()
         }

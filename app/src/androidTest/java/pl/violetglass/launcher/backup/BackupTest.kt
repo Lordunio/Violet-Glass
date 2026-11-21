@@ -21,7 +21,8 @@ class BackupTest {
         motion = PetMotion.FAST_HOPS, weather = PetWeather.SNOW, background = PetBackgroundMode.CYBER_LANDSCAPE,
         parallax = false, effectArea = PetEffectArea.LOWER_SCREEN, effectIntensity = .71f, effectSpeed = 1.4f,
         effectSize = 1.6f, effectOpacity = .42f, messagesEnabled = false, allMessageApps = false,
-        messagesOnly = false, messageApps = setOf("org.example.chat"), restPlace = "item:widget")
+        messagesOnly = false, messageApps = setOf("org.example.chat"), restPlace = "item:widget",
+        sleepAt = 23 * 60 + 15, wakeAt = 7 * 60 + 30)
     private fun layout() = LayoutState(LayoutConfig(columns = 6, pages = 2, dockSlots = 6), listOf(
         LayoutItem("folder", title = "Dom", container = "page:0", position = 0),
         LayoutItem("app", title = "Aplikacja", appKey = "0:missing.pkg/Activity", container = "folder:folder", position = 0),
@@ -59,13 +60,17 @@ class BackupTest {
         assertEquals(3, root.getInt("version"))
         assertEquals(doc, BackupCodec.decode(payload))
         assertFalse(root.getJSONObject("pet").has("energy"))
+        val oldPet = JSONObject(String(payload))
+        oldPet.getJSONObject("pet").apply { remove("sleepAt"); remove("wakeAt") }
+        assertEquals(petSettings.copy(sleepAt = DEFAULT_SLEEP_AT, wakeAt = DEFAULT_WAKE_AT),
+            BackupCodec.decode(oldPet.toString().toByteArray()).pet)
         val older = root().put("version", 1)
         older.getJSONObject("settings").remove("icon_pack")
         older.getJSONObject("settings").remove("icon_overrides")
         assertNull(BackupCodec.decode(older.toString().toByteArray()).pet)
         assertNull(BackupCodec.decode(root().toString().toByteArray()).pet)
         for((key, value) in listOf("motion" to "UNKNOWN", "effectSpeed" to 500, "effectOpacity" to "0.5",
-                "restPlace" to "file:/wallpaper.jpg", "energy" to 100)) {
+                "restPlace" to "file:/wallpaper.jpg", "energy" to 100, "sleepAt" to 1440, "wakeAt" to "360")) {
             val invalid = JSONObject(String(payload))
             invalid.getJSONObject("pet").put(key, value)
             reject(invalid)

@@ -2,6 +2,8 @@ package pl.violetglass.launcher.backup
 
 import org.json.JSONArray
 import org.json.JSONObject
+import pl.violetglass.launcher.pet.DEFAULT_SLEEP_AT
+import pl.violetglass.launcher.pet.DEFAULT_WAKE_AT
 import pl.violetglass.launcher.pet.PET_REST_DOCK
 import pl.violetglass.launcher.pet.PetAppearance
 import pl.violetglass.launcher.pet.PetBackgroundMode
@@ -15,6 +17,7 @@ internal object PetBackupSettings {
     private val itemReference = Regex("item:[A-Za-z0-9_-]{1,80}")
     private val packageName = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*")
     private val keys by lazy { encode(PetSettings()).keys().asSequence().toSet() }
+    private val optionalKeys = setOf("sleepAt", "wakeAt")
 
     fun encode(settings: PetSettings): JSONObject = JSONObject()
         .put("enabled", settings.enabled)
@@ -34,9 +37,12 @@ internal object PetBackupSettings {
         .put("messageApps", JSONArray(settings.messageApps.sorted()))
         .put("messagesOnly", settings.messagesOnly)
         .put("restPlace", settings.restPlace ?: JSONObject.NULL)
+        .put("sleepAt", settings.sleepAt)
+        .put("wakeAt", settings.wakeAt)
 
     fun decode(json: JSONObject): PetSettings {
-        require(json.keys().asSequence().toSet() == keys)
+        val fields = json.keys().asSequence().toSet()
+        require(fields - optionalKeys == keys - optionalKeys)
         val apps = json.getJSONArray("messageApps")
         require(apps.length() <= 1024)
         val packages = (0 until apps.length()).map { apps.get(it) as String }.toSet()
@@ -59,6 +65,8 @@ internal object PetBackupSettings {
             messageApps = packages,
             messagesOnly = json.get("messagesOnly") as Boolean,
             restPlace = if(json.isNull("restPlace")) null else json.get("restPlace") as String,
+            sleepAt = if (json.has("sleepAt")) json.get("sleepAt") as Int else DEFAULT_SLEEP_AT,
+            wakeAt = if (json.has("wakeAt")) json.get("wakeAt") as Int else DEFAULT_WAKE_AT,
         ).also(::validate)
     }
 

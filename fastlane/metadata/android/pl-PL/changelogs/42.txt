@@ -1,0 +1,1 @@
+Łowca muszek pokazuje wynik na ekranie „Koniec gry”. Zapisz wynik pod trzyznakowym nickiem w lokalnym rankingu dziesięciu najlepszych rund.

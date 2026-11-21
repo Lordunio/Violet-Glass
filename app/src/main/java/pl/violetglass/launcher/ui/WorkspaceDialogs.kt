@@ -31,6 +31,8 @@ fun ItemMenu(payload: ItemPayload, isFolder: Boolean, onDismiss: () -> Unit,
     onAdd: (String) -> Unit, onMove: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit,
     onIcon: () -> Unit = {},
     onUninstall: (() -> Unit)? = null,
+    onResizeFolder: (() -> Unit)? = null,
+    expandedFolder: Boolean = false,
 ) {
     val locked = LocalLauncherPreferences.current.locked
     GlassAlertDialog(onDismissRequest = onDismiss, title = { Text(payload.title) }, text = {
@@ -43,6 +45,11 @@ fun ItemMenu(payload: ItemPayload, isFolder: Boolean, onDismiss: () -> Unit,
             }
             TextButton(onClick = { onMove(); onDismiss() }, enabled = !locked, modifier = Modifier.testTag("moveItem")) { Text(stringResource(R.string.move_item)) }
             if (payload.itemId != null) {
+                if (onResizeFolder != null) {
+                    TextButton(onClick = { onResizeFolder(); onDismiss() }, enabled = !locked, modifier = Modifier.testTag("resizeFolder")) {
+                        Text(stringResource(if (expandedFolder) R.string.folder_shrink else R.string.folder_expand))
+                    }
+                }
                 TextButton(onClick = { onRename(); onDismiss() }, enabled = !locked, modifier = Modifier.testTag("renameItem")) { Text(stringResource(R.string.rename)) }
                 TextButton(onClick = { onRemove(); onDismiss() }, enabled = !locked, modifier = Modifier.testTag("removeItem")) { Text(stringResource(if (isFolder) R.string.remove_folder else R.string.remove_shortcut)) }
             }

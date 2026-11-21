@@ -93,6 +93,7 @@ fun PersonalizationDialog(model: LauncherViewModel, apps: List<LauncherApp>, sys
                                 }
                             }
                             Section.DESKTOP -> {
+                                Toggle(stringResource(R.string.auto_add_new_apps), prefs.autoAddNewApps, "autoAddNewApps", model::setAutoAddNewApps)
                                 Toggle(stringResource(R.string.auto_rotate), prefs.autoRotate, "autoRotate") { model.updatePreferences { p -> p.copy(autoRotate = it) } }
                                 Toggle(stringResource(R.string.system_wallpaper), prefs.systemWallpaper, "systemWallpaper") { model.updatePreferences { p -> p.copy(systemWallpaper = it) } }
                                 Toggle(stringResource(R.string.lock_layout), prefs.locked, "lockLayout") { model.updatePreferences { p -> p.copy(locked = it) } }
@@ -161,9 +162,19 @@ fun PersonalizationDialog(model: LauncherViewModel, apps: List<LauncherApp>, sys
                                 HaSettingsControls(prefs.ha) { value -> model.updatePreferences { p -> p.copy(ha = value) } }
                                 TextButton(onClick = model::refreshHa, modifier = Modifier.testTag("haRefresh")) { Text(stringResource(R.string.ha_refresh)) }
                             }
-                            Section.SCREENS -> PanelControls(prefs.ha.enabled, prefs.discover.enabled,
-                                { enabled -> model.updatePreferences { p -> p.copy(ha = p.ha.copy(enabled = enabled)) } },
-                                { enabled -> model.updatePreferences { p -> p.copy(discover = p.discover.copy(enabled = enabled)) } })
+                            Section.SCREENS -> {
+                                PanelControls(prefs.ha.enabled, prefs.discover.enabled,
+                                    { enabled -> model.updatePreferences { p -> p.copy(ha = p.ha.copy(enabled = enabled)) } },
+                                    { enabled -> model.updatePreferences { p -> p.copy(discover = p.discover.copy(enabled = enabled)) } })
+                                Toggle(stringResource(R.string.pet_game_panel), prefs.petGameEnabled, "panelPetGameEnabled") {
+                                    model.updatePreferences { p -> p.copy(petGameEnabled = it) }
+                                }
+                                Text(stringResource(R.string.pet_game_title), style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.pet_game_help), style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.pet_game_bonus_help), style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.pet_game_lock_help), style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(R.string.pet_game_pause_help), style = MaterialTheme.typography.bodyMedium)
+                            }
                             Section.DISCOVER -> {
                                 DiscoverControls(prefs.discover) { value -> model.updatePreferences { p -> p.copy(discover = value) } }
                                 TextButton(onClick = model::refreshDiscover, modifier = Modifier.testTag("discoverReconnect")) { Text(stringResource(R.string.discover_reconnect)) }

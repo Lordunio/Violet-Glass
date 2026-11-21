@@ -1,0 +1,1 @@
+Closed folders have a purple glass fill with no outline. The fly-catching game uses a compact icon HUD, a larger play area, and a lock against accidental page swipes. Game instructions are in Side panels settings.

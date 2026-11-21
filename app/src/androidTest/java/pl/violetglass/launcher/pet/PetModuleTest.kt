@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
@@ -74,16 +75,16 @@ class PetPersistenceTest {
             val before = PreferencesRepository(context.launcherDataStore).data.first()
             repository.resume(1000)
             val config = PetSettings(true, PetBackgroundMode.CYBER_LANDSCAPE, PetWeather.RAIN, false,
-                appearance = PetAppearance.HOME_ROBOT, motion = PetMotion.FAST_HOPS, effectArea = PetEffectArea.LOWER_SCREEN,
+                appearance = PetAppearance.PIXEL_FOX, motion = PetMotion.FAST_HOPS, effectArea = PetEffectArea.LOWER_SCREEN,
                 effectIntensity = .9f, effectSpeed = 1.7f, effectSize = 1.3f, effectOpacity = .8f,
                 allMessageApps = false, messageApps = setOf("chat.one", "chat.two"), messagesOnly = false,
-                restPlace = petRestItem("calendar"))
+                restPlace = petRestItem("calendar"), sleepAt = 21 * 60 + 45, wakeAt = 7 * 60 + 15)
             repository.update { config }
             val advanced = repository.resume(3_601_000)
             repository.save(PetStats(1f, 1f, 1f, 500))
             job.cancelAndJoin(); job = SupervisorJob(); repository = repo()
             assertEquals(advanced, repository.resume(3_601_000))
-            assertEquals(78.8f, advanced.energy, .001f)
+            assertEquals(88f, advanced.energy, .001f)
             assertEquals(config, repository.settings.first())
             assertEquals(before, PreferencesRepository(context.launcherDataStore).data.first())
         } finally { job.cancelAndJoin(); directory.deleteRecursively() }
@@ -212,6 +213,24 @@ class PetUiTest {
             compose.onNodeWithTag("petScene").assertExists()
             assertTrue(pet.running)
         }
+    }
+    @Test fun sleepingPetReturnsToTheSameSpotAfterPagingAway() {
+        val now = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
+        compose.mainClock.autoAdvance = false
+        runBlocking { repository.update { it.copy(enabled = true, restPlace = petRestItem("pet-icon-0"),
+            sleepAt = (now + 1430) % 1440, wakeAt = (now + 15) % 1440) } }
+        val platform = "icon:pet-icon-0"
+        framesUntil { pet.ui.value.mode == PetMode.SLEEPING && pet.ui.value.platformId == platform }
+        val before = pet.ui.value.feet
+        compose.onNodeWithTag("page:1").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        framesUntil { !pet.ui.value.visible }
+        compose.onNodeWithTag("petCharacter").assertDoesNotExist()
+        compose.onNodeWithTag("page:0").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        framesUntil { pet.ui.value.visible && pet.ui.value.platformId == platform }
+        assertEquals(before, pet.ui.value.feet)
+        assertEquals(PetMode.SLEEPING, pet.ui.value.mode)
     }
     @Test fun particlesRemainOnVisibleDesktopWhenCrossingDiscoverBoundary() {
         enable()
@@ -786,6 +805,10 @@ class PetUiTest {
         compose.mainClock.autoAdvance = true
         compose.onNodeWithTag("desktopSettings").performClick()
         compose.onNodeWithTag("section:WALLPAPER").performScrollTo().performClick()
+        val cyberPreview = compose.onNodeWithTag("petBackgroundPreview:CYBER_LANDSCAPE", useUnmergedTree = true)
+        cyberPreview.assertIsDisplayed()
+        val pixels = cyberPreview.captureToImage().toPixelMap()
+        assertNotEquals(pixels[pixels.width / 2, pixels.height / 8], pixels[pixels.width / 2, pixels.height * 7 / 8])
         compose.onNodeWithTag("petBackground:CYBER_LANDSCAPE").performScrollTo().performClick()
         compose.waitUntil(10000) { pet.settings.value.background == PetBackgroundMode.CYBER_LANDSCAPE }
         compose.onNodeWithTag("wallpaperEffectsEnabled").performScrollTo().performClick()
@@ -798,5 +821,31 @@ class PetUiTest {
         compose.onNodeWithTag("interactiveWallpaper").assertDoesNotExist()
         compose.onNodeWithTag("petScene").assertExists()
         assertEquals(18, model.workspace.value.layout!!.items.size)
+    }
+
+    @Test fun pixelWallpapersCanBeSelectedIndependentlyAndRenderDifferentScenes() {
+        compose.mainClock.autoAdvance = false
+        runBlocking { repository.update { it.copy(wallpaperEnabled = true, parallax = false, weather = PetWeather.NONE) } }
+        framesUntil { pet.settings.value.wallpaperEnabled && pet.running }
+        val before = model.workspace.value.layout
+        val colors = listOf(PetBackgroundMode.PIXEL_FOREST, PetBackgroundMode.NEON_CITY).map { mode ->
+            compose.openDesktopOptions()
+            framesUntil { !pet.running }
+            compose.mainClock.autoAdvance = true
+            compose.onNodeWithTag("desktopSettings").performClick()
+            compose.onNodeWithTag("section:WALLPAPER").performScrollTo().performClick()
+            compose.onNodeWithTag("petBackground:${mode.name}").performScrollTo().performClick()
+            compose.waitUntil(10_000) { pet.settings.value.background == mode }
+            compose.mainClock.autoAdvance = false
+            compose.onNodeWithTag("closePersonalization").performClick()
+            framesUntil { pet.running }
+            compose.mainClock.advanceTimeByFrame()
+            assertFalse(pet.settings.value.enabled)
+            val wallpaper = compose.onNodeWithTag("interactiveWallpaper").captureToImage().toPixelMap()
+            shell("screencap -p /sdcard/violet-${mode.name.lowercase()}.png")
+            wallpaper[wallpaper.width / 2, wallpaper.height / 8]
+        }
+        assertNotEquals(colors[0], colors[1])
+        assertEquals(before, model.workspace.value.layout)
     }
 }

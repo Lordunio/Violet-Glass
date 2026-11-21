@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.first
 import pl.violetglass.launcher.ha.*
 import pl.violetglass.launcher.icons.*
 
@@ -32,6 +33,8 @@ data class LauncherPreferences(
     val iconPack: String = "", val iconOverrides: Set<String> = emptySet(),
     val badgesEnabled: Boolean = true, val badgeStyle: BadgeStyle = BadgeStyle.NUMBER,
     val drawerCategories: Map<String, Set<String>> = emptyMap(),
+    val autoAddNewApps: Boolean = false,
+    val petGameEnabled: Boolean = false,
 )
 fun defaultGestures() = DesktopGesture.entries.associateWith {
     GestureBinding(when (it) {
@@ -47,14 +50,27 @@ class PreferencesRepository(private val store: DataStore<Preferences>) {
     suspend fun update(transform: (LauncherPreferences) -> LauncherPreferences) {
         store.edit { prefs -> encode(prefs, transform(decode(prefs))) }
     }
+    suspend fun setAutoAddNewApps(enabled: Boolean, packages: Set<String>) {
+        store.edit { prefs ->
+            prefs[bool("auto_add_new_apps")] = enabled
+            if (enabled) prefs[knownApps] = packages else prefs.remove(knownApps)
+        }
+    }
+    suspend fun knownAutoAddPackages() = store.data.first()[knownApps]
+    suspend fun rememberAutoAddPackages(packages: Set<String>) {
+        store.edit { it[knownApps] = packages }
+    }
     companion object {
         fun snapshot(value: LauncherPreferences): Preferences = mutablePreferencesOf().also { encode(it, value) }
         private fun int(name: String) = intPreferencesKey(name)
         private fun bool(name: String) = booleanPreferencesKey(name)
         private fun str(name: String) = stringPreferencesKey(name)
+        private val knownApps = stringSetPreferencesKey("auto_add_known_packages")
         private inline fun <reified T : Enum<T>> enum(value: String?, fallback: T): T =
             enumValues<T>().firstOrNull { it.name == value } ?: fallback
         fun decode(p: Preferences): LauncherPreferences = LauncherPreferences(
+            autoAddNewApps = p[bool("auto_add_new_apps")] ?: false,
+            petGameEnabled = p[bool("pet_game_enabled")] ?: false,
             badgesEnabled = p[bool("badges_enabled")] ?: true,
             badgeStyle = enum(p[str("badge_style")], BadgeStyle.NUMBER),
             iconPack = p[str("icon_pack")]?.takeIf { it.isEmpty() || validPackage(it) } ?: "",
@@ -100,6 +116,9 @@ class PreferencesRepository(private val store: DataStore<Preferences>) {
             },
         )
         private fun encode(p: MutablePreferences, v: LauncherPreferences) {
+            p[bool("auto_add_new_apps")] = v.autoAddNewApps
+            p[bool("pet_game_enabled")] = v.petGameEnabled
+            if (!v.autoAddNewApps) p.remove(knownApps)
             p[bool("badges_enabled")] = v.badgesEnabled; p[str("badge_style")] = v.badgeStyle.name
             p[str("icon_pack")] = v.iconPack.takeIf { it.isEmpty() || validPackage(it) } ?: ""
             p[stringSetPreferencesKey("icon_overrides")] = decodeIconChoices(v.iconOverrides).map { (key, choice) -> encodeIconChoice(key, choice) }.toSet()

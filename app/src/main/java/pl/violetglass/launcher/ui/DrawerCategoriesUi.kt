@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -21,24 +22,45 @@ import pl.violetglass.launcher.apps.LauncherApp
 import pl.violetglass.launcher.settings.MAX_CATEGORY_APPS
 import pl.violetglass.launcher.settings.MAX_CATEGORY_NAME
 import pl.violetglass.launcher.settings.MAX_DRAWER_CATEGORIES
+import pl.violetglass.launcher.settings.GlassTarget
+
+@Composable
+internal fun drawerTextShadow(target: GlassTarget = GlassTarget.DRAWER): Shadow? {
+    val settings = LocalLauncherPreferences.current.glass
+    if (!settings.enabled || target in settings.disabledTargets || settings.transparency == 0) return null
+    val radius = with(androidx.compose.ui.platform.LocalDensity.current) { 1.4.dp.toPx() }
+    return Shadow(MaterialTheme.colorScheme.surface.copy(alpha = settings.transparency / 100f), blurRadius = radius)
+}
+@Composable
+internal fun DrawerAction(onClick: () -> Unit, modifier: Modifier, label: String) {
+    val colors = MaterialTheme.colorScheme
+    FilledTonalButton(onClick = onClick, modifier = modifier,
+        colors = ButtonDefaults.filledTonalButtonColors(containerColor = colors.secondaryContainer,
+            contentColor = colors.onSecondaryContainer),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
 
 @Composable
 internal fun DrawerCategoryBar(categories: Map<String, Set<String>>, selected: String?, onSelect: (String?) -> Unit,
     onManage: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val colors = MaterialTheme.colorScheme
+    val chipColors = FilterChipDefaults.filterChipColors(containerColor = colors.surfaceContainer,
+        labelColor = colors.onSurface, selectedContainerColor = colors.primary, selectedLabelColor = colors.onPrimary)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             item {
                 FilterChip(selected == null, { onSelect(null) }, { Text(stringResource(R.string.drawer_category_all)) },
-                    modifier = Modifier.testTag("drawerCategoryAll"))
+                    modifier = Modifier.testTag("drawerCategoryAll"), colors = chipColors)
             }
             items(categories.keys.toList(), key = { it }) { name ->
                 FilterChip(selected == name, { onSelect(name) }, { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    modifier = Modifier.widthIn(max = 180.dp).testTag("drawerCategory:$name"))
+                    modifier = Modifier.widthIn(max = 180.dp).testTag("drawerCategory:$name"), colors = chipColors)
             }
         }
-        TextButton(onClick = onManage, modifier = Modifier.testTag("drawerCategoriesManage")) {
-            Text(stringResource(R.string.drawer_categories))
-        }
+        DrawerAction(onManage, Modifier.testTag("drawerCategoriesManage"), stringResource(R.string.drawer_categories))
     }
 }
 
@@ -49,7 +71,7 @@ internal fun DrawerCategoryDialog(categories: Map<String, Set<String>>, apps: Li
     var editing by rememberSaveable { mutableStateOf(selected != null) }
     var original by rememberSaveable { mutableStateOf(selected) }
     if(!editing) {
-        AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.drawer_categories)) },
+        GlassAlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.drawer_categories)) },
             text = {
                 LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     items(categories.keys.toList(), key = { it }) { name ->
@@ -69,7 +91,7 @@ internal fun DrawerCategoryDialog(categories: Map<String, Set<String>>, apps: Li
         val chosen = remember(appKeys) { appKeys.toSet() }
         val trimmed = name.trim()
         val duplicate = categories.keys.any { it != oldName && it.equals(trimmed, ignoreCase = true) }
-        AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.drawer_category_edit)) },
+        GlassAlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.drawer_category_edit)) },
             text = {
                 Column(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(name, { if(it.length <= MAX_CATEGORY_NAME && it.none(Char::isISOControl)) name = it },

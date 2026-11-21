@@ -38,6 +38,8 @@ class PetRepository(private val store: DataStore<Preferences>) {
         private val appearance = stringPreferencesKey("appearance")
         private val motion = stringPreferencesKey("motion")
         private val restPlace = stringPreferencesKey("rest_place")
+        private val sleepAt = intPreferencesKey("sleep_at_minute")
+        private val wakeAt = intPreferencesKey("wake_at_minute")
         private val effectArea = stringPreferencesKey("effect_area")
         private val intensity = floatPreferencesKey("effect_intensity")
         private val speed = floatPreferencesKey("effect_speed")
@@ -65,7 +67,8 @@ class PetRepository(private val store: DataStore<Preferences>) {
             enum(p[motion], PetMotion.CALM), enum(p[effectArea], PetEffectArea.FULL_SCREEN), p[intensity] ?: .5f,
             p[speed] ?: 1f, p[size] ?: 1f, p[opacity] ?: .6f, p[messagesEnabled] ?: true,
             p[allMessageApps] ?: true, p[messageApps] ?: emptySet(), p[messagesOnly] ?: true,
-            p[wallpaperEnabled] ?: p[enabled] ?: false, p[restPlace]).normalized()
+            p[wallpaperEnabled] ?: p[enabled] ?: false, p[restPlace], p[sleepAt] ?: DEFAULT_SLEEP_AT,
+            p[wakeAt] ?: DEFAULT_WAKE_AT).normalized()
     }
     val settings = store.data.map(::configuration)
     suspend fun update(change: (PetSettings) -> PetSettings) { store.edit { p ->
@@ -77,10 +80,11 @@ class PetRepository(private val store: DataStore<Preferences>) {
         p[messagesEnabled] = next.messagesEnabled; p[allMessageApps] = next.allMessageApps; p[messageApps] = next.messageApps
         p[messagesOnly] = next.messagesOnly
         if(next.restPlace == null) p.remove(restPlace) else p[restPlace] = next.restPlace
+        p[sleepAt] = next.sleepAt; p[wakeAt] = next.wakeAt
     } }
     suspend fun resume(now: Long): PetStats {
         var result = PetStats(lastUpdatedTimestamp = now)
-        store.edit { p -> result = stats(p, now).advance(now); put(p, result) }
+        store.edit { p -> result = stats(p, now).advance(now, away = true); put(p, result) }
         return result
     }
     suspend fun save(value: PetStats) { store.edit { p -> if(value.lastUpdatedTimestamp >= (p[updated] ?: 0L)) put(p, value) } }
@@ -113,6 +117,13 @@ class PetEngine(seed: Int = 19) {
     private var particleArea = Rect.Zero
     private var lowerEffectTop = 0f
     private var power = PowerState()
+    private var scheduledSleep = false
+    private val shouldSleep get() = scheduledSleep || !power.plugged && (power.percent <= 12 || state.stats.needsRest)
+    private val restingMode get() = if (!scheduledSleep && state.notificationCount > 0) PetMode.COURIER else PetMode.SLEEPING
+    private var desktopPage = 0
+    private var favoriteDesktop: Int? = null
+    private data class SleepSpot(val page: Int, val platform: String?, val xFraction: Float, val favorite: Boolean)
+    private var sleepSpot: SleepSpot? = null
     val particles = ParticleField(seed)
     fun restore(stats: PetStats) { state = state.copy(ready = true, stats = stats) }
     fun viewport(width: Float, height: Float, scale: Float, navigationBottom: Float) {
@@ -123,16 +134,26 @@ class PetEngine(seed: Int = 19) {
         particleArea = Rect.Zero
         surfaces(registeredGeometry)
     }
-    fun surfaces(values: List<PlatformSurface>) {
+    fun surfaces(values: List<PlatformSurface>, page: Int = desktopPage, restPage: Int? = favoriteDesktop) {
         // Layout callbacks may precede the overlay's first onSizeChanged. Retain raw
         // geometry so a later viewport/rotation can rebuild all eligible platforms.
         registeredGeometry = values.filter { it.kind != PlatformKind.FLOOR }
+        val pageChanged = desktopPage != page
+        if (favoriteDesktop != restPage && options.restPlace != PET_REST_DOCK) sleepSpot = null
+        desktopPage = page
+        favoriteDesktop = restPage
         if(world.width <= 0f || world.height <= state.sizePx) return
         val floor = PlatformSurface("floor", Rect(world.left, world.bottom, world.right, world.bottom + 1), PlatformKind.FLOOR)
         platforms = registeredGeometry.filter { it.bounds.width >= state.sizePx * .5f && it.bounds.top >= world.top + state.sizePx &&
             it.bounds.top <= world.bottom && it.bounds.left >= -1f && it.bounds.right <= world.right + 1f } + floor
+        if (state.ready && shouldSleep) {
+            settleSleep()
+            return
+        }
+        sleepSpot = null
+        if (state.sleepingDesktop != null) state = state.copy(sleepingDesktop = null, mode = PetMode.IDLE)
         val old = current
-        current = platforms.find { it.id == old?.id }
+        current = platforms.find { !pageChanged && it.id == old?.id }
         if(current == null || current?.kind == PlatformKind.FLOOR && platforms.any { it.kind == PlatformKind.DOCK }) current = platforms.filter { it.kind == PlatformKind.DOCK }.maxByOrNull { it.bounds.width } ?: floor
         if(old != current || !state.visible) {
             airborne = false; vx = 0f; vy = 0f
@@ -144,6 +165,28 @@ class PetEngine(seed: Int = 19) {
         } else if((goal != null && platforms.none { it == goal }) || route.any { id -> platforms.none { it.id == id } }) {
             invalidateRoute()
         }
+    }
+
+    private fun settleSleep() {
+        if (!state.ready || platforms.isEmpty()) return
+        val spot = sleepSpot ?: run {
+            val favorite = favoriteSurface()
+            val useFavorite = favorite != null || favoriteDesktop != null
+            val observed = platforms.firstOrNull { it.id == current?.id }
+            val restingOn = observed ?: platforms.firstOrNull { it.kind == PlatformKind.DOCK } ?: platforms.last()
+            val fraction = if (observed == null || !state.visible) .5f else
+                ((state.feet.x - restingOn.bounds.left) / restingOn.bounds.width).coerceIn(0f, 1f)
+            SleepSpot(favoriteDesktop ?: desktopPage, restingOn.id, if (useFavorite) .5f else fraction, useFavorite)
+                .also { sleepSpot = it }
+        }
+        val bed = if (desktopPage != spot.page) null else if (spot.favorite) favoriteSurface()
+            else platforms.firstOrNull { it.id == spot.platform }
+        airborne = false; vx = 0f; vy = 0f; happyFor = 0f
+        pendingTouch = null
+        clearRoute()
+        current = bed
+        state = state.copy(mode = restingMode, sleepingDesktop = spot.page, visible = bed != null, platformId = bed?.id,
+            feet = bed?.let { Offset(safeX(it, it.bounds.left + it.bounds.width * spot.xFraction), it.bounds.top) } ?: state.feet)
     }
     private fun invalidateRoute() {
         if(returningToRest || restSeconds > 0f) {
@@ -225,7 +268,7 @@ class PetEngine(seed: Int = 19) {
     // The navigation-bar floor is a safety net, not a destination below a real dock.
     private fun roamingSurfaces() = platforms.filter { it.kind != PlatformKind.FLOOR }.ifEmpty { platforms }
     fun target(point: Offset, ripple: Boolean = true, automatic: Boolean = false) {
-        if(!state.visible) return
+        if(!state.visible || shouldSleep) return
         if(!automatic) { roamSeconds = 0f; restSeconds = 0f }
         if(ripple) state = state.copy(ripple = Offset(point.x.coerceIn(0f, world.right), point.y.coerceIn(
             if(options.effectArea == PetEffectArea.FULL_SCREEN) 0f else lowerEffectTop, world.bottom)), rippleAge = 0f)
@@ -243,7 +286,7 @@ class PetEngine(seed: Int = 19) {
         }
     }
     fun pat(now: Long) {
-        happyFor = 2.5f
+        if (!scheduledSleep) happyFor = 2.5f
         advanceStats(now)
         val stats = state.stats
         val energy = if (stats.needsRest) RECOVERED_ENERGY else stats.energy
@@ -253,17 +296,21 @@ class PetEngine(seed: Int = 19) {
     fun clean(now: Long) { pat(now); state = state.copy(stats = state.stats.copy(cleanliness = 100f)) }
     fun notification() { notifications(1) }
     fun notifications(count: Int) { state = state.copy(notificationCount = count.coerceIn(0, 999)) }
-    fun environment(value: PowerState, night: Boolean) { power = value; state = state.copy(night = night, charging = value.plugged) }
-    fun advanceStats(now: Long) { state = state.copy(stats = state.stats.advance(now, power.plugged, state.night || power.percent <= 12)) }
-    fun tick(seconds: Float, weather: PetWeather, parallax: Offset, settings: PetSettings = PetSettings()) {
+    fun environment(value: PowerState, night: Boolean, sleep: Boolean = night) {
+        power = value; scheduledSleep = sleep; state = state.copy(night = night, charging = value.plugged)
+    }
+    fun advanceStats(now: Long) { state = state.copy(stats = state.stats.advance(now, power.plugged, shouldSleep)) }
+    fun restWhileAway(now: Long) { state = state.copy(stats = state.stats.advance(now, away = true)) }
+    fun tick(seconds: Float, weather: PetWeather, parallax: Offset, settings: PetSettings = PetSettings(), moveCharacter: Boolean = true) {
         if(options.restPlace != settings.restPlace) {
+            sleepSpot = null
             roamSeconds = 0f
             restSeconds = 0f
             if(returningToRest) clearRoute()
         }
         options = settings
         val delta = seconds.takeIf { it.isFinite() }?.coerceIn(0f, .1f) ?: 0f
-        accumulator += delta
+        accumulator = if (moveCharacter) accumulator + delta else 0f
         while(accumulator >= 1f / 120f) { step(1f / 120f); accumulator -= 1f / 120f }
         val effective = if(weather == PetWeather.AUTO) PetWeather.FIREFLIES else weather
         val area = if(settings.effectArea == PetEffectArea.FULL_SCREEN) world else world.copy(top = min(lowerEffectTop, world.bottom))
@@ -273,11 +320,16 @@ class PetEngine(seed: Int = 19) {
             parallax = state.parallax + (parallax - state.parallax) * (1f - exp(-delta / .12f)), appearance = settings.appearance)
     }
     private fun step(dt: Float) {
+        if (shouldSleep) {
+            if (sleepSpot == null || state.sleepingDesktop == null) settleSleep()
+            else if (state.mode != restingMode) state = state.copy(mode = restingMode)
+            return
+        }
+        if (state.sleepingDesktop != null) surfaces(registeredGeometry)
         if(!state.visible) return
         happyFor = (happyFor - dt).coerceAtLeast(0f)
         hopCooldown = (hopCooldown - dt).coerceAtLeast(0f)
-        val sleeping = !power.plugged && (state.night || power.percent <= 12 || state.stats.needsRest)
-        val stationary = sleeping || power.plugged || happyFor > 0
+        val stationary = power.plugged || happyFor > 0
         var feet = state.feet
         val calm = options.motion == PetMotion.CALM
         val fast = options.motion == PetMotion.FAST_HOPS
@@ -385,7 +437,7 @@ class PetEngine(seed: Int = 19) {
         }
         feet = feet.copy(x = feet.x.coerceIn(state.sizePx / 2, max(state.sizePx / 2, world.right - state.sizePx / 2)), y = feet.y.coerceAtMost(world.bottom))
         val mode = when { state.notificationCount > 0 -> PetMode.COURIER; happyFor > 0 -> PetMode.HAPPY
-            power.plugged -> PetMode.EATING; sleeping -> PetMode.SLEEPING
+            power.plugged -> PetMode.EATING
             airborne -> PetMode.HOPPING; abs(vx) > .1f -> PetMode.WALKING; else -> PetMode.IDLE }
         state = state.copy(feet = feet, mode = mode, facing = if(abs(vx) > 1) if(vx > 0) 1 else -1 else state.facing, platformId = current?.id)
     }
@@ -435,6 +487,29 @@ class ParticleField(seed: Int, val count: Int = 128) {
 }
 
 class PetViewModel(application: Application) : AndroidViewModel(application) {
+    internal val gameSession = PetGameSession()
+    private val gameScoreRepository = PetGameScoreRepository(application.petGameScoreStore)
+    internal val gameScores = gameScoreRepository.scores
+        .catch { if (it is java.io.IOException) emit(emptyList()) else throw it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    internal fun saveGameScore(nickname: String) {
+        val nick = normalizePetNickname(nickname)
+        if (nick.length != 3) return
+        val round = gameSession.beginSaving() ?: return
+        viewModelScope.launch {
+            val result = try {
+                if (gameScoreRepository.save(PetGameScore(round.id, nick, round.score, System.currentTimeMillis()))) {
+                    PetScoreSave.SAVED
+                } else PetScoreSave.BELOW_RANKING
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: java.io.IOException) {
+                PetScoreSave.FAILED
+            }
+            gameSession.finishSaving(round, result)
+        }
+    }
     private val repository = PetRepository(application.petDataStore)
     val settings = repository.settings.stateIn(viewModelScope, SharingStarted.Eagerly, PetSettings())
     internal val engine = PetEngine()
@@ -455,38 +530,67 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     private fun publish() { mutable.value = engine.state }
     fun configure(change: (PetSettings) -> PetSettings) { viewModelScope.launch { repository.update(change) } }
     fun viewport(width: Int, height: Int, density: Float, bottom: Int) { engine.viewport(width.toFloat(), height.toFloat(), density, bottom.toFloat()); publish() }
-    fun surfaces(value: List<PlatformSurface>) { engine.surfaces(value); publish() }
-    suspend fun resume() {
-        engine.restore(repository.resume(System.currentTimeMillis()))
-        running = true; environment(System.currentTimeMillis()); publish()
+    fun surfaces(value: List<PlatformSurface>, page: Int, restPage: Int?) { engine.surfaces(value, page, restPage); publish() }
+    fun resume() {
+        if (running) return
+        val now = System.currentTimeMillis()
+        engine.restWhileAway(now)
+        running = true; environment(now); publish()
     }
-    fun pause() { running = false; parallax = Offset.Zero; persist() }
+    fun pause() {
+        if (!running) return
+        persist()
+        running = false
+        parallax = Offset.Zero
+    }
+    fun refreshRest() {
+        if (!running && engine.state.ready) persist()
+    }
     fun motion(value: Offset) { parallax = value }
     fun power(value: PowerState) { power = value; environment(System.currentTimeMillis()); publish() }
     private fun environment(now: Long) {
-        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
-        engine.environment(power, hour >= 22 || hour < 6); lastEnvironment = now
+        val clock = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+        val config = settings.value
+        val minute = clock.hour * 60 + clock.minute
+        engine.environment(power, minute >= DEFAULT_SLEEP_AT || minute < DEFAULT_WAKE_AT, config.scheduledSleep(minute))
+        lastEnvironment = now
     }
-    fun frame(seconds: Float, now: Long = System.currentTimeMillis()) {
+    fun frame(seconds: Float, now: Long = System.currentTimeMillis(), moveCharacter: Boolean = true) {
         if(!running) return
         frameCount++
-        if(now - lastEnvironment >= 30_000) environment(now)
-        if(now - lastStats >= 1000) { engine.advanceStats(now); lastStats = now }
+        if(now - lastStats >= 1000 || now < lastEnvironment) {
+            environment(now)
+            engine.advanceStats(now)
+            lastStats = now
+        }
         val config = settings.value
-        engine.tick(seconds, if(config.wallpaperEnabled) config.weather else PetWeather.NONE, parallax, config); publish()
+        engine.tick(seconds, if(config.wallpaperEnabled) config.weather else PetWeather.NONE, parallax, config, moveCharacter); publish()
         if(now - lastSave >= 60_000) persist()
     }
     fun hit(point: Offset): Boolean = settings.value.enabled && engine.state.let { it.visible && Rect(it.feet.x - it.sizePx / 2, it.feet.y - it.sizePx, it.feet.x + it.sizePx / 2, it.feet.y).contains(point) }
     fun touch(point: Offset) { if(hit(point)) pat() else { engine.target(point); publish() } }
-    fun pat() { engine.pat(System.currentTimeMillis()); publish(); persist() }
-    fun clean() { engine.clean(System.currentTimeMillis()); publish(); persist() }
+    fun pat() {
+        if (!engine.state.ready) return
+        val now = System.currentTimeMillis()
+        if (!running) engine.restWhileAway(now)
+        engine.pat(now)
+        persist(now)
+    }
+    fun clean() {
+        if (!engine.state.ready) return
+        val now = System.currentTimeMillis()
+        if (!running) engine.restWhileAway(now)
+        engine.clean(now)
+        persist(now)
+    }
     fun messages(active: pl.violetglass.launcher.notifications.PetNotificationSources) {
         val config = settings.value
         engine.notifications(config.messageCount(if(config.messagesOnly) active.messages else active.all)); publish()
     }
-    private fun persist() {
-        engine.advanceStats(System.currentTimeMillis()); publish()
-        val snapshot = engine.state.stats; lastSave = System.currentTimeMillis()
+    private fun persist(now: Long = System.currentTimeMillis()) {
+        if (running) engine.advanceStats(now) else engine.restWhileAway(now)
+        publish()
+        val snapshot = engine.state.stats; lastSave = now
         if(snapshot.lastUpdatedTimestamp > 0 && engine.state.ready) viewModelScope.launch { repository.save(snapshot) }
     }
     fun powerEvents(): Flow<PowerState> = callbackFlow {

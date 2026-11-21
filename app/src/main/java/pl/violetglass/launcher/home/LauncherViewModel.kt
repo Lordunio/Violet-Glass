@@ -23,7 +23,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -198,11 +197,56 @@ class LauncherViewModel(application: Application, private val savedStateHandle: 
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WorkspaceState())
     private val refresh = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val state = merge(repository.changes, refresh).mapLatest {
-        try { AppsState(apps = repository.load(), loading = false, revision = repository.iconRevision) }
+    val state = merge(repository.changes, refresh).map {
+        try {
+            val apps = edits.withLock {
+                repository.load().also { reconcileNewApps(it) }
+            }
+            AppsState(apps = apps, loading = false, revision = repository.iconRevision)
+        }
         catch (cancel: CancellationException) { throw cancel }
         catch (_: Exception) { AppsState(loading = false, failed = true) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppsState())
+
+    fun setAutoAddNewApps(enabled: Boolean) {
+        viewModelScope.launch {
+            edits.withLock {
+                try {
+                    backupRestorer.recover()
+                    val packages = if (enabled) repository.load().mapTo(HashSet()) { it.component.packageName } else emptySet()
+                    preferencesRepository.setAutoAddNewApps(enabled, packages)
+                    refresh()
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Exception) {
+                    notices.send(R.string.preferences_save_error)
+                }
+            }
+        }
+    }
+
+    private suspend fun reconcileNewApps(apps: List<LauncherApp>) {
+        try {
+            if (!preferencesRepository.data.first().autoAddNewApps) return
+            backupRestorer.recover()
+            val prefs = preferencesRepository.data.first()
+            if (!prefs.autoAddNewApps) return
+            val byPackage = apps.distinctBy { it.component.packageName }.associateBy { it.component.packageName }
+            val previous = preferencesRepository.knownAutoAddPackages()
+            if (byPackage.keys == previous) return
+            if (previous != null && !prefs.locked) {
+                val added = byPackage.values.filter { it.component.packageName !in previous && it.key !in prefs.hiddenApps }
+                if (added.isNotEmpty()) layoutRepository.edit { start ->
+                    added.fold(start) { layout, app -> LayoutEngine.addNewApp(layout, app.key, app.label) }
+                }
+            }
+            preferencesRepository.rememberAutoAddPackages(byPackage.keys.toSet())
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (_: Exception) {
+            notices.send(R.string.layout_save_error)
+        }
+    }
 
     fun refresh() { refresh.tryEmit(Unit) }
     fun retryLayout() { restartLayout.value++ }

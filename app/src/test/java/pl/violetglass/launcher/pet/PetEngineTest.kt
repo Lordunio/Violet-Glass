@@ -6,6 +6,47 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PetEngineTest {
+    @Test fun scheduledSleepStaysAtTheSelectedWidgetWhenChangingDesktops() {
+        val pet = engine()
+        val dock = PlatformSurface("dock:bottom", Rect(0f, 800f, 600f, 900f), PlatformKind.DOCK)
+        val bed = PlatformSurface("widget:bed", Rect(110f, 260f, 290f, 350f), PlatformKind.WIDGET)
+        val config = PetSettings(restPlace = petRestItem("bed"))
+        fun tick() = pet.tick(.05f, PetWeather.NONE, Offset.Zero, config)
+        pet.surfaces(listOf(dock), page = 0, restPage = 1)
+        pet.environment(PowerState(plugged = true), night = false, sleep = true)
+        pet.notifications(1)
+        tick()
+        assertEquals(1, pet.state.sleepingDesktop)
+        assertFalse(pet.state.visible)
+        pet.surfaces(listOf(dock, bed), page = 1, restPage = 1)
+        assertTrue(pet.state.visible)
+        assertEquals(PetMode.SLEEPING, pet.state.mode)
+        val sleepingFeet = Offset(bed.bounds.center.x, bed.bounds.top)
+        assertEquals(sleepingFeet, pet.state.feet)
+        pet.surfaces(listOf(dock), page = 0, restPage = 1)
+        tick()
+        assertFalse(pet.state.visible)
+        assertEquals(sleepingFeet, pet.state.feet)
+        pet.surfaces(listOf(dock, bed), page = 1, restPage = 1)
+        assertEquals(sleepingFeet, pet.state.feet)
+        assertEquals(bed.id, pet.state.platformId)
+        pet.environment(PowerState(), night = false, sleep = false)
+        tick()
+        assertNull(pet.state.sleepingDesktop)
+        assertNotEquals(PetMode.SLEEPING, pet.state.mode)
+    }
+
+    @Test fun sleepScheduleSupportsMidnightAndExactWakeMinute() {
+        val schedule = PetSettings(sleepAt = 22 * 60 + 30, wakeAt = 6 * 60 + 15)
+        assertFalse(schedule.scheduledSleep(22 * 60 + 29))
+        assertTrue(schedule.scheduledSleep(22 * 60 + 30))
+        assertTrue(schedule.scheduledSleep(0))
+        assertTrue(schedule.scheduledSleep(6 * 60 + 14))
+        assertFalse(schedule.scheduledSleep(6 * 60 + 15))
+        assertTrue(schedule.copy(sleepAt = 60, wakeAt = 120).scheduledSleep(90))
+        assertFalse(schedule.copy(wakeAt = schedule.sleepAt).scheduledSleep(0))
+    }
+
     @Test fun latestTapDuringFlightIsPlannedFromTheLandingPlatform() {
         val pet = engine()
         val first = PlatformSurface("widget:first", Rect(130f, 520f, 240f, 650f), PlatformKind.WIDGET)
@@ -281,11 +322,32 @@ class PetEngineTest {
         assertFalse(engine.state.stats.needsRest)
         assertEquals(PetMode.HAPPY, engine.state.mode)
     }
+    @Test fun overnightRestChargesEvenANonExhaustedPetWithoutDoubleCounting() {
+        val start = 1_000L
+        val morning = start + 8 * 3_600_000L
+        val before = PetStats(energy = 12f, lastUpdatedTimestamp = start)
+        val after = before.advance(morning, away = true)
+        assertEquals(76f, after.energy, 0f)
+        assertEquals(after, after.advance(morning, away = true))
+        assertEquals(100f, before.advance(morning + 8 * 3_600_000L, away = true).energy, 0f)
+        assertEquals(70f, before.copy(energy = 6f).advance(morning, away = true).energy, 0f)
+    }
+
+    @Test fun pagerTransitionKeepsThePetInPlaceWhileEffectsContinue() {
+        val engine = engine()
+        engine.target(Offset(540f, 850f))
+        val start = engine.state.feet
+        val startTime = engine.state.animationSeconds
+        repeat(30) { engine.tick(.02f, PetWeather.FIREFLIES, Offset.Zero, moveCharacter = false) }
+        assertEquals(start, engine.state.feet)
+        assertTrue(engine.state.animationSeconds > startTime)
+    }
+
     @Test fun powerNightPettingAndNotificationSelectRealStates() {
         val engine = engine()
         engine.environment(PowerState(8, false), false); engine.tick(.02f, PetWeather.NONE, Offset.Zero)
         assertEquals(PetMode.SLEEPING, engine.state.mode)
-        engine.environment(PowerState(8, true), true); engine.tick(.02f, PetWeather.NONE, Offset.Zero)
+        engine.environment(PowerState(8, true), night = true, sleep = false); engine.tick(.02f, PetWeather.NONE, Offset.Zero)
         assertEquals(PetMode.EATING, engine.state.mode)
         engine.environment(PowerState(80, false), false); engine.pat(2000); engine.tick(.02f, PetWeather.NONE, Offset.Zero)
         assertEquals(PetMode.HAPPY, engine.state.mode)

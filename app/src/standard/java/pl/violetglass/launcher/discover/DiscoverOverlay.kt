@@ -218,6 +218,7 @@ class DiscoverOverlay(private val activity: Activity) : DiscoverConnection {
         // Google's window is attached to the Activity, not to a Compose page.
         // Reattaching it for every pager layout destroys its content on ColorOS.
         // The provider owns system insets and its slide animation via onScroll.
+        edgeGesture.updateBounds()
     }
     private fun exchangeFrame(service: IBinder) {
             val params = WindowManager.LayoutParams().apply {

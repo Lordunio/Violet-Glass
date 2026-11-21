@@ -1,5 +1,7 @@
 package pl.violetglass.launcher.ui
 
+import androidx.compose.ui.graphics.Color
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -13,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
@@ -114,8 +117,8 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     var pageArea by remember { mutableStateOf(Rect.Zero) }
     var pendingPage by remember { mutableStateOf<Int?>(null) }
     val registry = remember { DragRegistry() }
-    val pages = remember(prefs.ha.enabled, prefs.discover.enabled, layout?.config?.pages) {
-        LauncherPages(prefs.ha.enabled, prefs.discover.enabled, layout?.config?.pages ?: 1)
+    val pages = remember(prefs.ha.enabled, prefs.discover.enabled, layout?.config?.pages, prefs.petGameEnabled) {
+        LauncherPages(prefs.ha.enabled, prefs.discover.enabled, layout?.config?.pages ?: 1, prefs.petGameEnabled)
     }
     val pager = rememberPagerState(initialPage = pages.firstDesktop) { pages.count }
     if (pl.violetglass.launcher.BuildConfig.DEBUG) LaunchedEffect(pager) {
@@ -154,7 +157,15 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     }
     val desktopPage = pages.desktop(pager.currentPage)
     val showHa = pages.kind(pager.currentPage) == LauncherPage.HOME_ASSISTANT
-    val showNews = pages.kind(pager.currentPage) == LauncherPage.DISCOVER
+    val showGame = pages.kind(pager.currentPage) == LauncherPage.PET_GAME
+    var gameLocked by remember { mutableStateOf(false) }
+    LaunchedEffect(showGame) {
+        if (!showGame) {
+            gameLocked = false
+            pet.gameSession.pause()
+        }
+    }
+    val onDesktop = pages.kind(pager.currentPage) == LauncherPage.DESKTOP
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     DisposableEffect(discoverConnection, prefs.ha.enabled) {
@@ -173,7 +184,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
         onDispose { discoverConnection.leftNavigation(null); discoverConnection.leftDrag(null) }
     }
     val goHome: () -> Unit = { scope.launch { pager.animateScrollToPage(pages.firstDesktop) } }
-    val panelMask = (if(prefs.ha.enabled) 1 else 0) or (if(prefs.discover.enabled) 2 else 0)
+    val panelMask = (if(prefs.ha.enabled) 1 else 0) or (if(prefs.discover.enabled) 2 else 0) or (if(prefs.petGameEnabled) 4 else 0)
     var previousPanelMask by rememberSaveable { mutableIntStateOf(panelMask) }
     LaunchedEffect(panelMask) {
         if(previousPanelMask != panelMask) { previousPanelMask = panelMask; pager.scrollToPage(pages.firstDesktop) }
@@ -250,7 +261,8 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     }
     BackHandler {
         when {
-            showNews || showHa -> goHome()
+            showGame && gameLocked -> gameLocked = false
+            !onDesktop -> goHome()
             drag != null -> drag = null
             folderId != null -> folderId = null
             placement != null -> placement = null
@@ -261,7 +273,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     fun targetAt(point: Offset): Pair<Slot, Rect>? {
         val session = drag
         val item = layout?.items?.find { item -> item.id == session?.payload?.itemId }
-        if(item?.isWidget == true && session != null) {
+        if(item?.occupiesRectangle == true && session != null) {
             if(!pageArea.contains(point)) return null
             val config = layout.config
             val origin = point - (session.grabOffset ?: Offset.Zero)
@@ -278,7 +290,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
     }
     val selected = drag?.takeIf { it.moved }?.let { targetAt(it.point)?.first }
     val beginDrag by rememberUpdatedState<(Offset) -> Boolean>({ point ->
-        if (!showHa && !showNews && layout != null && !layoutDialog && menu == null && !desktopOptions) {
+        if (onDesktop && layout != null && !layoutDialog && menu == null && !desktopOptions) {
             registry.sources.values.lastOrNull { (bounds, payload) ->
                 val item = layout.items.find { it.id == payload.itemId }
                 val visibleLayer = when {
@@ -289,8 +301,8 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                 bounds.contains(point) && visibleLayer
             }?.let { (bounds, payload) ->
                 if (prefs.locked) menu = payload else {
-                    val widget = layout.items.find { it.id == payload.itemId && it.isWidget }
-                    drag = IconDrag(payload, point, point, grabOffset = widget?.let { point - bounds.topLeft })
+                    val rectangle = layout.items.find { it.id == payload.itemId && it.occupiesRectangle }
+                    drag = IconDrag(payload, point, point, grabOffset = rectangle?.let { point - bounds.topLeft })
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 }
             }
@@ -316,8 +328,9 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                 if (target != null) {
                     val (slot, bounds) = target
                     val center = bounds.center
-                    val merge = kotlin.math.abs(session.point.x - center.x) < bounds.width * .30f &&
-                        kotlin.math.abs(session.point.y - center.y) < bounds.height * .30f
+                    val merge = layout?.at(slot.container, slot.position)?.isExpandedFolder == true ||
+                        (kotlin.math.abs(session.point.x - center.x) < bounds.width * .30f &&
+                            kotlin.math.abs(session.point.y - center.y) < bounds.height * .30f)
                     model.place(session.payload, slot, merge)
                 }
             }
@@ -341,7 +354,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
         }
     }
     val gestureEligible by rememberUpdatedState<(Offset) -> Boolean>({ point ->
-        !showHa && !showNews && !desktopOptions && layout != null && !showApps && folderId == null && placement == null && drag == null &&
+        onDesktop && !desktopOptions && layout != null && !showApps && folderId == null && placement == null && drag == null &&
             !layoutDialog && menu == null && rename == null && !newFolder && removeFolder == null &&
             !personalization && !widgetPicker && resizingWidget == null &&
             pageArea.contains(point) && point.x > pageArea.left + edge && point.x < pageArea.right - edge &&
@@ -356,7 +369,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
         pageArea.height + 1 >= required
     })
     val swipeEligible by rememberUpdatedState<(Offset) -> Boolean>({ point ->
-        !showHa && !showNews && !desktopOptions && layout != null && !showApps && folderId == null && placement == null && drag == null &&
+        onDesktop && !desktopOptions && layout != null && !showApps && folderId == null && placement == null && drag == null &&
             !layoutDialog && menu == null && rename == null && !newFolder && removeFolder == null &&
             !personalization && !widgetPicker && resizingWidget == null && (pageArea.contains(point) ||
                 layout.items.any { !it.isWidget && registry.sources["item:${it.id}"]?.first?.contains(point) == true }) &&
@@ -376,15 +389,27 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             else -> systemActions.execute(binding)
         }
     })
-    val nativeWidgetAt by rememberUpdatedState<(Offset) -> Boolean>({ point -> !showApps && !showHa && !showNews && layout?.items?.any { item ->
+    val nativeWidgetAt by rememberUpdatedState<(Offset) -> Boolean>({ point -> !showApps && onDesktop && layout?.items?.any { item ->
                 item.isWidget && item.container == pageContainer(desktopPage) && registry.sources["item:${item.id}"]?.first?.contains(point) == true
             } == true })
     // Keep one animation clock across desktop pages; panel boundaries reveal the scene spatially.
-    val petSceneLeft = (pages.index(0) - pager.currentPage - pager.currentPageOffsetFraction).coerceIn(0f, 1f)
-    val petActive = petSettings.sceneEnabled && layout != null && !showApps && petSceneLeft < 1f &&
+    val pagerPosition = pager.currentPage + pager.currentPageOffsetFraction
+    val petSceneLeft = (pages.firstDesktop - pagerPosition).coerceIn(0f, 1f)
+    val petSceneRight = (pages.lastDesktop + 1f - pagerPosition).coerceIn(0f, 1f)
+    val petActive = petSettings.sceneEnabled && layout != null && !showApps && petSceneLeft < petSceneRight &&
         !desktopOptions && !personalization && folderId == null && drag == null && placement == null &&
         !widgetPicker && !layoutDialog && menu == null && rename == null && !newFolder && removeFolder == null && resizingWidget == null && editingIcon == null
-    val petVisible by rememberUpdatedState(petActive && !pager.isScrollInProgress && !showHa && !showNews)
+    val petVisible by rememberUpdatedState(petActive && !pager.isScrollInProgress && onDesktop)
+    var hopOrigin by remember(pager) { mutableStateOf<Offset?>(null) }
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.isScrollInProgress }.collect { moving ->
+            hopOrigin = if (moving) pet.ui.value.takeIf { it.ready && it.visible && it.sleepingDesktop == null }?.feet else null
+        }
+    }
+    val hopDelta = pagerPosition - pager.settledPage
+    val hopDestination = pager.settledPage + if (hopDelta >= 0f) 1 else -1
+    val desktopHop = pager.isScrollInProgress && hopDestination in 0 until pages.count &&
+        (pager.settledPage in pages.firstDesktop..pages.lastDesktop || hopDestination in pages.firstDesktop..pages.lastDesktop)
     Box(Modifier.fillMaxSize().testTag("launcherRoot").pointerInput(Unit) {
         detectLauncherDrag(
             acceptsConsumed = { nativeWidgetAt(it) },
@@ -398,42 +423,58 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             interceptTap = { point -> petVisible && !nativeWidgetAt(point) && pet.hit(point) })
     }) {
         HorizontalPager(pager, beyondViewportPageCount = 2,
-            key = { pages.key(it) }, userScrollEnabled = drag == null && placement == null && !showApps && folderId == null,
+            key = { pages.key(it) }, userScrollEnabled = !gameLocked && drag == null && placement == null && !showApps && folderId == null,
             modifier = Modifier.fillMaxSize().testTag("screenPager")) { screen ->
         if (pages.kind(screen) == LauncherPage.DESKTOP) {
         val inactiveRegistry = remember(screen) { DragRegistry() }
         val pageRegistry = if(screen == pager.currentPage) registry else inactiveRegistry
         val page = pages.desktop(screen)
         val drawerHere = showApps && screen == pager.currentPage
-        val needsBackdrop = folderId != null || menu != null || layoutDialog || personalization || widgetPicker || resizingWidget != null || rename != null || newFolder || removeFolder != null
+        val needsBackdrop = folderId != null || menu != null || layoutDialog || personalization || widgetPicker ||
+            resizingWidget != null || rename != null || newFolder || removeFolder != null || editDrawerCategories
         val labelBackdrop = when {
             drawerHere -> WorkspaceLabelBackdrop.SURFACE
-            petSettings.wallpaperEnabled && petSettings.background == PetBackgroundMode.CYBER_LANDSCAPE -> WorkspaceLabelBackdrop.DARK
+            petSettings.wallpaperEnabled && petSettings.background.isProcedural -> WorkspaceLabelBackdrop.DARK
             prefs.systemWallpaper || petSettings.wallpaperEnabled && petPhoto != null -> WorkspaceLabelBackdrop.PHOTO
             else -> WorkspaceLabelBackdrop.SURFACE
         }
+        val wallpaperBackdrop = if (LocalGlassPolicy.current.blurDp > 0 &&
+            petSettings.wallpaperEnabled && (petSettings.background.isProcedural || petPhoto != null)) {
+            val layer = rememberGraphicsLayer()
+            remember(layer) { GlassBackdrop(layer) }
+        } else null
         CompositionLocalProvider(
             LocalGridSurfaceTracker provides if(petSettings.sceneEnabled && screen == pager.currentPage && !drawerHere) petTracker else null,
             LocalWorkspaceLabelBackdrop provides labelBackdrop,
+            LocalGlassBackdrop provides (wallpaperBackdrop ?: LocalSceneBackdrop.current),
         ) {
         Scaffold(modifier = Modifier.then(if (screen != pager.currentPage) Modifier.clearAndSetSemantics {} else Modifier)
             .recordGlassBackdrop(if (needsBackdrop && screen == pager.currentPage) LocalWorkspaceBackdrop.current else null), containerColor = androidx.compose.ui.graphics.Color.Transparent,
             contentColor = if (prefs.systemWallpaper && !drawerHere) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onBackground,
             snackbarHost = { SnackbarHost(snackbar) }) { insets ->
             Box(Modifier.fillMaxSize()) {
-            if(!drawerHere) InteractiveWallpaperLayer(pet, petSettings)
+            InteractiveWallpaperLayer(pet, petSettings, Modifier.fillMaxSize().recordGlassBackdrop(wallpaperBackdrop))
             Column(Modifier.fillMaxSize().padding(insets).imePadding().padding(horizontal = prefs.margin.dp)) {
-                if (drawerHere) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = closeDrawer, modifier = Modifier.testTag("homeButton")) { Text(stringResource(R.string.home)) }
-                }
                 if (drawerHere) {
                     GlassSurface(GlassTarget.DRAWER, Modifier.weight(1f).fillMaxWidth()) {
                     Column(Modifier.fillMaxSize().padding(12.dp)) {
-                    Text(stringResource(R.string.all_apps), style = MaterialTheme.typography.headlineSmall)
+                    val textShadow = drawerTextShadow()
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.all_apps), Modifier.weight(1f),
+                            style = MaterialTheme.typography.headlineSmall.copy(shadow = textShadow))
+                        DrawerAction(closeDrawer, Modifier.testTag("homeButton"), stringResource(R.string.home))
+                    }
                     GlassSurface(GlassTarget.SEARCH, Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    TextField(query, { query = it }, singleLine = true, placeholder = { Text(stringResource(R.string.search_apps)) },
-                        colors = TextFieldDefaults.colors(focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    val searchText = LocalContentColor.current
+                    val searchShadow = drawerTextShadow(GlassTarget.SEARCH)
+                    TextField(query, { query = it }, singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(shadow = searchShadow),
+                        placeholder = { Text(stringResource(R.string.search_apps), style = LocalTextStyle.current.copy(shadow = searchShadow)) },
+                        colors = TextFieldDefaults.colors(focusedTextColor = searchText, unfocusedTextColor = searchText,
+                            focusedPlaceholderColor = searchText, unfocusedPlaceholderColor = searchText,
+                            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                            cursorColor = searchText,
                             focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                             unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent),
                         modifier = Modifier.fillMaxWidth().testTag("appSearch").focusRequester(searchFocus))
@@ -442,23 +483,27 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                     key(query, selectedCategory) {
                         val gridState = rememberLazyGridState()
                         if(!state.loading && !state.failed && visible.isNotEmpty()) {
-                            Text(stringResource(R.string.apps_count, visible.size), style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.apps_count, visible.size),
+                                style = MaterialTheme.typography.labelMedium.copy(shadow = textShadow))
                         }
                         Box(Modifier.weight(1f).fillMaxWidth().testTag("drawerViewport").pointerInput(gridState) {
                             detectDrawerReturn(atTop = { !gridState.canScrollBackward && !gridState.isScrollInProgress },
                                 canDismiss = { drawerCanDismiss }, onDismiss = { dismissDrawer() })
                         }) {
                             when {
-                                state.loading -> Column { CircularProgressIndicator(); Text(stringResource(R.string.loading)) }
+                                state.loading -> Column {
+                                    CircularProgressIndicator()
+                                    Text(stringResource(R.string.loading), style = LocalTextStyle.current.copy(shadow = textShadow))
+                                }
                                 state.failed -> Column {
-                                    Text(stringResource(R.string.load_error))
+                                    Text(stringResource(R.string.load_error), style = LocalTextStyle.current.copy(shadow = textShadow))
                                     Button(onClick = model::refresh) { Text(stringResource(R.string.retry)) }
                                 }
                                 visible.isEmpty() -> Text(stringResource(when {
                                     query.isNotBlank() -> R.string.no_results
                                     selectedCategory != null -> R.string.drawer_category_empty
                                     else -> R.string.no_apps
-                                }))
+                                }), style = LocalTextStyle.current.copy(shadow = textShadow))
                                 else -> AppDrawer(visible, model.repository, state.revision, pageRegistry,
                                     { if (!model.repository.launch(it)) { model.refresh(); notify(launchError) } },
                                     openMenu, Modifier.fillMaxSize(), gridState)
@@ -527,7 +572,10 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                 onSettings = { settingsSection = "HA"; personalization = true }, active = active, refreshKey = haRefresh)
             } else Box(Modifier.fillMaxSize().testTag("haPage"))
         }
-        else DiscoverScreen(prefs.discover, goHome, { settingsSection = "DISCOVER"; personalization = true },
+        else if (pages.kind(screen) == LauncherPage.PET_GAME) {
+            PetGamePanel(pet, petSettings.appearance, pager.settledPage == screen && !pager.isScrollInProgress && !personalization,
+                locked = gameLocked, onToggleLock = { gameLocked = !gameLocked })
+        } else DiscoverScreen(prefs.discover, goHome, { settingsSection = "DISCOVER"; personalization = true },
             progress = { if(personalization) 0f else (1f - kotlin.math.abs(pager.currentPage - screen + pager.currentPageOffsetFraction)).coerceIn(0f, 1f) },
             onNativeScroll = { value -> scope.launch {
                 if(floatingHa && pager.currentPage + pager.currentPageOffsetFraction < screen - .001f) return@launch
@@ -547,11 +595,18 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                 }
             }
         }
+        val restDesktop = remember(layout, petSettings.restPlace) {
+            layout?.items?.firstOrNull { petRestItem(it.id) == petSettings.restPlace && it.container.startsWith("page:") }
+                ?.container?.substringAfter(':')?.toIntOrNull()
+        }
         InteractiveTamagotchiOverlay(pet, petTracker, petSettings, petActive,
-            sceneLeftFraction = petSceneLeft, interactive = petVisible)
-        val desktopBars = !showApps && !showHa && !showNews
-        val cyberBackground = desktopBars && petSettings.wallpaperEnabled && petSettings.background == PetBackgroundMode.CYBER_LANDSCAPE
-        LauncherSystemBars(cyberBackground, !showHa && !cyberBackground &&
+            sceneLeftFraction = petSceneLeft, interactive = petVisible, sceneRightFraction = petSceneRight,
+            hopOrigin = if (desktopHop) hopOrigin else null, hopPageDelta = hopDelta, pagerMoving = pager.isScrollInProgress,
+            desktopPage = if (onDesktop) desktopPage else null, restPage = restDesktop,
+            desktopPosition = pagerPosition - pages.firstDesktop)
+        val desktopBars = !showApps && onDesktop
+        val darkWallpaper = desktopBars && petSettings.wallpaperEnabled && petSettings.background.isProcedural
+        LauncherSystemBars(darkWallpaper || showGame, !showHa && !showGame && !darkWallpaper &&
             (prefs.systemWallpaper || desktopBars && petSettings.wallpaperEnabled && petPhoto != null))
         val folder = layout?.items?.find { it.id == folderId && it.isFolder }
         if (folder != null && !showApps) FolderOverlay(folder, layout, apps, model.repository, state.revision, registry,
@@ -601,6 +656,10 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             if (item?.isWidget == true) WidgetMenu(item, prefs.locked, { menu = null },
                 onMove = { placement = payload; showApps = false }, onResize = { resizingWidget = item }, onRemove = { model.removeItem(item.id) })
             else ItemMenu(payload, item?.isFolder == true, { menu = null },
+                onResizeFolder = item?.takeIf { it.isFolder && it.container.startsWith("page:") }?.let { folder ->
+                    { model.editLayout { LayoutEngine.resizeFolder(it, folder.id, !folder.isExpandedFolder) } }
+                },
+                expandedFolder = item?.isExpandedFolder == true,
                 onUninstall = apps[payload.appKey]?.takeIf { model.repository.canUninstall(it) }?.let { app -> ({ systemActions.uninstall(app) }) },
                 onIcon = { editingIcon = payload },
                 onAdd = { container -> model.add(payload, if (container == "home") pageContainer(desktopPage) else container) },

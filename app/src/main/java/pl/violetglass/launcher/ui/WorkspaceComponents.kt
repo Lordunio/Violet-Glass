@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
@@ -31,6 +40,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -92,7 +102,7 @@ fun WorkspaceGrid(
                 repeat(layout.config.capacity) { position ->
                     val slot = Slot(pageContainer(page), position)
                     val occupant = layout.at(slot.container, position)
-                    val item = occupant?.takeIf { !it.isWidget && it.position == position }
+                    val item = occupant?.takeIf { !it.occupiesRectangle && it.position == position }
                     WorkspaceCell(item, slot, layout, apps, repository, revision, registry,
                         selected == slot, placing, onSlot, onLaunch, onMenu,
                         Modifier.offset(cellWidth * (position % layout.config.columns), cellHeight * (position / layout.config.columns))
@@ -105,6 +115,16 @@ fun WorkspaceGrid(
                                 .size(cellWidth * widget.spanX, cellHeight * widget.spanY).padding(prefs.gap.dp)
                                 .then(if(widget.widgetId == null) Modifier else Modifier.registerPlatformSurface(
                                     if(widget.provider?.contains("search", ignoreCase = true) == true) "search:${widget.id}" else "widget:${widget.id}")))
+                    }
+                }
+                layout.items.filter { it.isExpandedFolder && it.container == pageContainer(page) }.forEach { folder ->
+                    key(folder.id) {
+                        ItemTile(folder, layout, apps, repository, revision, registry,
+                            onClick = { if (placing) onSlot(Slot(folder.container, folder.position)) else onLaunch(folder) },
+                            onMenu = onMenu,
+                            modifier = Modifier.offset(cellWidth * (folder.position % layout.config.columns), cellHeight * (folder.position / layout.config.columns))
+                                .size(cellWidth * folder.spanX, cellHeight * folder.spanY).padding(prefs.gap.dp),
+                            onPreviewApp = if (placing) null else onLaunch)
                     }
                 }
             }
@@ -208,6 +228,7 @@ fun ItemTile(
     item: LayoutItem, layout: LayoutState, apps: Map<String, LauncherApp>, repository: AppsRepository,
     revision: Long, registry: DragRegistry, onClick: () -> Unit, onMenu: (ItemPayload) -> Unit,
     modifier: Modifier = Modifier,
+    onPreviewApp: ((LayoutItem) -> Unit)? = null,
 ) {
     val prefs = LocalLauncherPreferences.current
     val payload = ItemPayload(item.id, item.appKey, item.title)
@@ -223,24 +244,33 @@ fun ItemTile(
             .padding(3.dp),
         content = {
             BoxWithConstraints(contentAlignment = Alignment.Center) {
-                val iconSize = minOf(prefs.iconSize.dp, maxWidth, maxHeight)
+                val maxIconSize = if (item.isExpandedFolder) maxWidth else prefs.iconSize.dp
+                val iconSize = minOf(maxIconSize, maxWidth, maxHeight)
                 if(iconSize > 0.dp) {
                     if(item.isFolder) {
-                        val children = layout.children(item.id).take(4)
+                        val columns = if (item.isExpandedFolder) 3 else 2
+                        val previewSize = if (item.isExpandedFolder) 8 else 4
+                        val children = layout.children(item.id).take(previewSize)
                         val counts = LocalBadgeCounts.current
                         val count = layout.children(item.id).mapNotNull { apps[it.appKey]?.component?.packageName }
                             .distinct().sumOf { counts[it] ?: 0 }
                         WithNotificationBadge(count, Modifier.size(iconSize).then(platform)) {
-                            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.size(iconSize)) {
-                                Column(Modifier.padding(3.dp)) {
-                                    repeat(2) { row ->
+                            GlassSurface(GlassTarget.FOLDERS, modifier = Modifier.size(iconSize),
+                                plainColor = MaterialTheme.colorScheme.secondaryContainer,
+                                compact = true) {
+                                Column(Modifier.fillMaxSize().padding(3.dp)) {
+                                    repeat(columns) { row ->
                                         Row(Modifier.weight(1f)) {
-                                            repeat(2) { col ->
-                                                val child = children.getOrNull(row * 2 + col)
-                                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                            repeat(columns) { col ->
+                                                val index = row * columns + col
+                                                val child = children.getOrNull(index)
+                                                val action = if (child != null && onPreviewApp != null) {
+                                                    Modifier.clickable { onPreviewApp(child) }.semantics { contentDescription = child.title }
+                                                } else Modifier
+                                                Box(Modifier.weight(1f).fillMaxHeight().then(action), contentAlignment = Alignment.Center) {
                                                     if(child != null) AppIcon(apps[child.appKey], child.title, repository,
-                                                        revision, (iconSize / 2 - 5.dp).coerceAtLeast(1.dp), showBadge = false)
+                                                        revision, (iconSize / columns - 5.dp).coerceAtLeast(1.dp), showBadge = false)
+                                                    else if (index == 8) Text("⋯", color = MaterialTheme.colorScheme.onSecondaryContainer)
                                                 }
                                             }
                                         }
@@ -278,6 +308,19 @@ fun ItemTile(
 }
 
 @Composable
+internal fun DrawerAppLabel(name: String, modifier: Modifier, style: TextStyle, outlined: Boolean,
+    maxLines: Int, singleWordSize: TextAutoSize?) {
+    var layout by remember(name) { mutableStateOf<TextLayoutResult?>(null) }
+    val wraps = name.trim().any { it.isWhitespace() }
+    BasicText(name, modifier.drawBehind {
+        if (outlined) layout?.let {
+            drawText(it, color = Color(0xFF17131B), drawStyle = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round))
+        }
+    }, style = style, onTextLayout = { layout = it }, softWrap = wraps,
+        maxLines = if (wraps) maxLines else 1, overflow = TextOverflow.Ellipsis,
+        autoSize = if (wraps) null else singleWordSize)
+}
+@Composable
 fun AppDrawer(
     apps: List<LauncherApp>, repository: AppsRepository, revision: Long, registry: DragRegistry,
     onLaunch: (LauncherApp) -> Unit, onMenu: (ItemPayload) -> Unit, modifier: Modifier = Modifier,
@@ -285,16 +328,32 @@ fun AppDrawer(
 ) {
     val options = stringResource(R.string.item_options)
     val prefs = LocalLauncherPreferences.current
-    LazyVerticalGrid(columns = GridCells.Fixed(prefs.drawerColumns), state = gridState, modifier = modifier.testTag("appsGrid"),
-        contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(apps, key = { it.key }) { app ->
-            val payload = ItemPayload(appKey = app.key, title = app.label)
-            Column(Modifier.then(Modifier.sourceBounds(registry, "drawer:${app.key}", payload)).testTag("app:${app.key}")
-                .clickable { onLaunch(app) }.semantics { onLongClick(options) { onMenu(payload); true } }
-                .padding(vertical = 12.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                AppIcon(app, app.label, repository, revision, prefs.iconSize.dp)
-                Spacer(Modifier.height(8.dp))
-                Text(app.label, fontSize = prefs.labelSize.sp, color = labelTint(prefs.labelColor), textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    val outlined = LocalGlassPolicy.current.enabled && GlassTarget.DRAWER !in prefs.glass.disabledTargets &&
+        prefs.glass.transparency > 0
+    val labelStyle = workspaceLabelStyle(prefs).copy(lineBreak = LineBreak.Heading,
+        color = if (outlined) Color.White else LocalContentColor.current, fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center)
+    val singleWordSize = remember(prefs.labelSize) {
+        if (prefs.labelSize > 10) TextAutoSize.StepBased((prefs.labelSize - 2).coerceAtLeast(10).sp, prefs.labelSize.sp, .5.sp)
+        else null
+    }
+    BoxWithConstraints(modifier) {
+        val labelWidth = (maxWidth / prefs.drawerColumns - 4.dp).coerceAtLeast(1.dp)
+        val maxLines = if (labelWidth < 60.dp) 3 else 2
+        val iconSize = minOf(prefs.iconSize.dp, labelWidth)
+        LazyVerticalGrid(columns = GridCells.Fixed(prefs.drawerColumns), state = gridState,
+            modifier = Modifier.fillMaxSize().testTag("appsGrid"), contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(apps, key = { it.key }) { app ->
+                val payload = ItemPayload(appKey = app.key, title = app.label)
+                Column(Modifier.sourceBounds(registry, "drawer:${app.key}", payload).testTag("app:${app.key}")
+                    .clickable { onLaunch(app) }.semantics { onLongClick(options) { onMenu(payload); true } }
+                    .padding(vertical = 10.dp, horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    AppIcon(app, app.label, repository, revision, iconSize)
+                    Spacer(Modifier.height(5.dp))
+                    DrawerAppLabel(app.label, Modifier.fillMaxWidth().testTag("appLabel:${app.key}"),
+                        labelStyle, outlined, maxLines, singleWordSize)
+                }
             }
         }
     }

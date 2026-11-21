@@ -6,7 +6,7 @@ import android.view.*
 
 /** An app-owned touch strip on this Activity, with no system overlay permission. */
 internal class DiscoverEdgeGesture(private val activity: Activity) {
-    private var attached = false
+    private var layout: WindowManager.LayoutParams? = null
     private var downX = 0f
     private var downY = 0f
     private var fired = false
@@ -51,7 +51,7 @@ internal class DiscoverEdgeGesture(private val activity: Activity) {
     fun show(onDrag: ((Float, Boolean) -> Unit)? = null, callback: () -> Unit) {
         navigate = callback
         drag = onDrag
-        if(attached || !activity.window.decorView.isAttachedToWindow) return
+        if(layout != null || !activity.window.decorView.isAttachedToWindow) return
         val params = WindowManager.LayoutParams(
             // This separate provider window cannot delegate a touch stream to
             // Google's views. Reserve a bounded navigation band, leaving the
@@ -67,14 +67,35 @@ internal class DiscoverEdgeGesture(private val activity: Activity) {
             x = (20 * density).toInt()
             title = "Violet Discover edge"
         }
-        runCatching { activity.windowManager.addView(view, params); attached = true }
+        fitBelowHeader(params)
+        runCatching { activity.windowManager.addView(view, params); layout = params }
+    }
+
+    private fun fitBelowHeader(params: WindowManager.LayoutParams): Boolean {
+        val metrics = activity.windowManager.currentWindowMetrics
+        val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+            WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout(),
+        )
+        // A separate window owns the complete touch sequence once it receives DOWN.
+        // Keep Google's toolbar entirely above the strip, including its left side.
+        val top = insets.top + (120 * density).toInt()
+        val height = (metrics.bounds.height() - top).coerceAtLeast(1)
+        if (params.y == top && params.height == height) return false
+        params.y = top
+        params.height = height
+        return true
+    }
+
+    fun updateBounds() {
+        val params = layout ?: return
+        if (fitBelowHeader(params)) activity.windowManager.updateViewLayout(view, params)
     }
     fun hide() {
-        if(attached) runCatching { activity.windowManager.removeViewImmediate(view) }
-        attached = false; navigate = null; drag = null; raisePending = false; touching = false; horizontal = false
+        if(layout != null) runCatching { activity.windowManager.removeViewImmediate(view) }
+        layout = null; navigate = null; drag = null; raisePending = false; touching = false; horizontal = false
     }
     fun raise() {
-        if(!attached) return
+        if(layout == null) return
         if(touching) { raisePending = true; return }
         val callback = navigate ?: return
         val onDrag = drag

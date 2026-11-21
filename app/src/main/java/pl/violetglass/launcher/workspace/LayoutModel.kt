@@ -33,6 +33,8 @@ data class LayoutItem(
 ) {
     val isFolder: Boolean get() = appKey == null && !isWidget
     val isWidget: Boolean get() = widgetId != null || provider != null
+    val isExpandedFolder: Boolean get() = isFolder && spanX == 2 && spanY == 2
+    val occupiesRectangle: Boolean get() = isWidget || isExpandedFolder
 }
 
 data class LayoutState(val config: LayoutConfig = LayoutConfig(), val items: List<LayoutItem> = emptyList()) {
@@ -51,7 +53,7 @@ data class LayoutState(val config: LayoutConfig = LayoutConfig(), val items: Lis
 }
 
 fun occupiedCells(item: LayoutItem, config: LayoutConfig): Set<Int> {
-    if (!item.isWidget) return setOf(item.position)
+    if (!item.occupiesRectangle) return setOf(item.position)
     val row = item.position / config.columns
     val col = item.position % config.columns
     return (row until row + item.spanY).flatMap { y ->

@@ -60,7 +60,7 @@ fun DiscoverScreen(settings: DiscoverSettings, onHome: () -> Unit, onSettings: (
             val position = it.positionInWindow()
             overlay.frame(position.x.roundToInt(), position.y.roundToInt(), it.size.width, it.size.height)
         }) {
-        if(status != DiscoverStatus.READY) Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        if(status != DiscoverStatus.READY) GlassSurface(GlassTarget.PANELS, Modifier.fillMaxSize()) {
             Column(Modifier.padding(20.dp)) {
                 Text(stringResource(when(status) {
                     DiscoverStatus.CONNECTING -> R.string.discover_connecting

@@ -1,0 +1,1 @@
+Zamknięte foldery reagują na pełny zakres suwaka przezroczystości. Łowca muszek zachowuje rundę podczas przełączania pulpitów i ma przycisk pauzy. Ruch zwierzaka w grze i przy zmianie pulpitu jest płynniejszy.

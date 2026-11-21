@@ -25,7 +25,7 @@ object BackupCodec {
     const val MAX_ITEMS = 5000
     private val excluded = setOf("ha_local", "ha_remote", "ha_path", "ha_connection", "desktop_revision", "badges_enabled", "badge_style", "auto_rotate")
     private val schema by lazy { PreferencesRepository.snapshot(LauncherPreferences()).asMap().filterKeys { it.name !in excluded } }
-    private val optionalSettings = setOf("drawer_categories")
+    private val optionalSettings = setOf("drawer_categories", "auto_add_new_apps", "pet_game_enabled")
 
     fun settings(value: LauncherPreferences): Preferences {
         val canonical = PreferencesRepository.snapshot(PreferencesRepository.decode(PreferencesRepository.snapshot(value)))

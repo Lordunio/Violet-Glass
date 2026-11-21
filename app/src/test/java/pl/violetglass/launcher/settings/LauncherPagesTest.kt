@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LauncherPagesTest {
+    @Test fun optionalGameIsAfterEveryDesktopAndPreservesDesktopKeys() {
+        val pages = LauncherPages(ha = true, discover = true, desktops = 2, petGame = true)
+        assertEquals(5, pages.count)
+        assertEquals(3, pages.lastDesktop)
+        assertEquals(LauncherPage.PET_GAME, pages.kind(4))
+        assertEquals("desktop:1", pages.key(3))
+        assertEquals("PET_GAME", pages.key(4))
+    }
+
     @Test fun requestedOrderIncludesAllDesktops() {
         val pages = LauncherPages(ha = true, discover = true, desktops = 3)
         assertEquals(listOf(LauncherPage.HOME_ASSISTANT, LauncherPage.DISCOVER, LauncherPage.DESKTOP, LauncherPage.DESKTOP, LauncherPage.DESKTOP), (0 until pages.count).map(pages::kind))

@@ -1,0 +1,1 @@
+Fioletowe wypełnienie zamkniętych folderów bez obwódki. Łowca muszek ma teraz ikony bonusów, większą planszę i blokadę przesuwania panelu. Instrukcję gry znajdziesz w ustawieniach paneli bocznych.

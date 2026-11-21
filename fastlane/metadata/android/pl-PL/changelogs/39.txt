@@ -1,0 +1,1 @@
+Zwierzak odzyskuje energię przy wyłączonym ekranie. Zamknięte foldery mają efekt Liquid Glass. Łowca muszek zyskał szybki ogień, podwójny strzał, tarczę i efekty trafień.

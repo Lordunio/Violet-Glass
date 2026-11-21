@@ -71,21 +71,26 @@ class DiscoverEdgeGestureTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         SystemClock.sleep(300)
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        fun send(action: Int, y: Float, start: Long) {
-            val event = MotionEvent.obtain(start, SystemClock.uptimeMillis(), action, 160f * density, y * density, 0)
+        fun send(action: Int, x: Float, y: Float, start: Long) {
+            val event = MotionEvent.obtain(start, SystemClock.uptimeMillis(), action, x * density, y * density, 0)
                 .apply { source = InputDevice.SOURCE_TOUCHSCREEN }
             try { automation.injectInputEvent(event, true) } finally { event.recycle() }
             SystemClock.sleep(40)
         }
-        var start = SystemClock.uptimeMillis()
-        send(MotionEvent.ACTION_DOWN, 240f, start)
-        send(MotionEvent.ACTION_UP, 240f, start)
-        start = SystemClock.uptimeMillis()
-        send(MotionEvent.ACTION_DOWN, 240f, start)
-        send(MotionEvent.ACTION_MOVE, 320f, start)
-        send(MotionEvent.ACTION_UP, 380f, start)
+        fun tap(x: Float, y: Float) {
+            val start = SystemClock.uptimeMillis()
+            send(MotionEvent.ACTION_DOWN, x, y, start)
+            send(MotionEvent.ACTION_UP, x, y, start)
+        }
+        tap(55f, 78f) // Left side of the Google heading, inside the strip's X range.
+        tap(160f, 78f)
+        tap(160f, 240f)
+        val start = SystemClock.uptimeMillis()
+        send(MotionEvent.ACTION_DOWN, 160f, 240f, start)
+        send(MotionEvent.ACTION_MOVE, 160f, 320f, start)
+        send(MotionEvent.ACTION_UP, 160f, 380f, start)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        assertEquals(2, releases.get())
+        assertEquals(4, releases.get())
         org.junit.Assert.assertTrue(moves.get() > 0)
         assertEquals(0, navigations.get())
     }

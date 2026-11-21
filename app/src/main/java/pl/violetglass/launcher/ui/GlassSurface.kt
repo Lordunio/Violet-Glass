@@ -102,28 +102,40 @@ fun GlassSurface(
     modifier: Modifier = Modifier,
     backdrop: GlassBackdrop? = LocalGlassBackdrop.current,
     plainColor: Color = MaterialTheme.colorScheme.surfaceContainer,
+    compact: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val settings = LocalLauncherPreferences.current.glass
     val policy = LocalGlassPolicy.current
     val active = policy.enabled && target !in settings.disabledTargets
     val blur = if (active) policy.blurDp else 0f
-    val shape = RoundedCornerShape(if (active) settings.corners.dp else 26.dp)
+    val corner = if (active) settings.corners else 26
+    val shape = RoundedCornerShape((if (compact) minOf(corner, 16) else corner).dp)
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
     val progress by animateFloatAsState(if (entered) 1f else 0f, tween(if (active) policy.durationMillis else 0), label = "glassEntrance")
     val colors = MaterialTheme.colorScheme
+    val dark = colors.background.luminance() < .5f
+    val violet = when {
+        compact -> Color(0xFF8F63C5)
+        dark -> Color(0xFF4C3071)
+        target == GlassTarget.DRAWER || target == GlassTarget.SEARCH -> Color(0xFFCFACEF)
+        else -> Color(0xFFE2CCFA)
+    }
+    val glassTint = if (target == GlassTarget.SEARCH) lerp(violet, colors.onSurface, .09f) else violet
     val density = LocalDensity.current
     val radius = with(density) { blur.dp.toPx() }
     val hasBackdrop = backdrop != null
     val effect = remember(radius, hasBackdrop) { if (radius > 0 && hasBackdrop) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP).asComposeRenderEffect() else null }
     var position by remember { mutableStateOf(Offset.Unspecified) }
-    val tintAlpha = if (!active || policy.mode == GlassMode.LITE || !LocalGlassEnvironment.current.hardware) 1f else 1f - settings.transparency / 100f
+    val opacity = 1f - settings.transparency.coerceIn(0, 100) / 100f
+    val tintAlpha = if (active) opacity else 1f
+    val reflection = policy.reflection * if (compact) tintAlpha else 1f
     Box(modifier.semantics { this[GlassActiveKey] = active; this[GlassBlurKey] = blur; this[GlassModeKey] = policy.mode.name; this[GlassTargetKey] = target.name }
-        .then(if (active && policy.durationMillis > 0) Modifier.graphicsLayer {
+        .then(if (active && !compact && policy.durationMillis > 0) Modifier.graphicsLayer {
             alpha = progress; scaleX = .985f + .015f * progress; scaleY = scaleX
         } else Modifier)
-        .then(if (active && policy.mode != GlassMode.LITE) Modifier.shadow(10.dp, shape, clip = false,
+        .then(if (active && !compact && policy.mode != GlassMode.LITE) Modifier.shadow(10.dp, shape, clip = false,
             ambientColor = Color(0xFF442073), spotColor = Color(0xFF442073)) else Modifier)
         .clip(shape).then(if (effect != null) Modifier.onGloballyPositioned { position = it.localToScreen(Offset.Zero) } else Modifier)) {
         if (effect != null && backdrop != null) {
@@ -135,13 +147,14 @@ fun GlassSurface(
                     }
                 })
         }
-        Box(Modifier.matchParentSize().background(plainColor.copy(alpha = tintAlpha)))
-        if (active && policy.reflection > 0) {
+        Box(Modifier.matchParentSize().background((if (active) glassTint else plainColor).copy(alpha = tintAlpha)))
+        if (active && reflection > 0) {
             Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(
-                Color.White.copy(alpha = .26f * policy.reflection), Color(0xFFBF91FF).copy(alpha = .08f * policy.reflection),
-                Color.Transparent, Color.White.copy(alpha = .08f * policy.reflection))))
-                .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = .48f * policy.reflection),
-                    colors.primary.copy(alpha = .12f), Color.White.copy(alpha = .12f * policy.reflection))), shape))
+                Color.White.copy(alpha = .26f * reflection), Color(0xFFBF91FF).copy(alpha = .08f * reflection),
+                Color.Transparent, Color.White.copy(alpha = .08f * reflection))))
+                .then(if (compact) Modifier else Modifier.border(1.dp, Brush.linearGradient(listOf(
+                    Color.White.copy(alpha = .48f * reflection), colors.primary.copy(alpha = .12f),
+                    Color.White.copy(alpha = .12f * reflection))), shape)))
         }
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) { content() }
     }

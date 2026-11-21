@@ -1,0 +1,1 @@
+Closed folders use the full transparency slider range. The fly-catching game keeps the round when switching pages and adds a pause button. The pet moves more smoothly in the game and across desktops.

@@ -15,6 +15,7 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
@@ -361,6 +362,45 @@ class PersonalizationUiTest {
         grid.performTouchInput { swipeDown(durationMillis = 300) }
         compose.onNodeWithTag("appSearch").assertDoesNotExist()
         compose.onNodeWithTag("desktopPager").assertIsDisplayed()
+    }
+
+    @Test fun narrowDrawerKeepsReadableSearchCategoryAndAppName() {
+        val app = fixture()
+        fun textLayout(node: SemanticsNodeInteraction): androidx.compose.ui.text.TextLayoutResult {
+            val result = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(result) }
+            return result.single()
+        }
+        for (theme in listOf(ThemeMode.LIGHT, ThemeMode.DARK)) {
+            runBlocking { model.preferencesRepository.update { it.copy(theme = theme, systemWallpaper = false,
+                drawerColumns = 8, iconSize = 72, drawerCategories = mapOf("Dom" to setOf(app.key)),
+                glass = GlassSettings(mode = GlassMode.ULTRA, transparency = 100, reflections = 100)) } }
+            waitPreferences { it.theme == theme && it.glass.transparency == 100 }
+            compose.openDrawer()
+            val labels = listOf(R.string.search_apps, R.string.drawer_categories, R.string.home, R.string.all_apps)
+                .map { compose.activity.getString(it) } + "Dom"
+            val dark = theme == ThemeMode.DARK
+            for (label in labels) {
+                val node = compose.onNodeWithText(label, useUnmergedTree = true)
+                val style = textLayout(node).layoutInput.style
+                assertEquals(label, Color.Unspecified, style.background)
+                val luminance = style.color.luminance()
+                assertTrue(label, if (dark) luminance > .65f else luminance < .15f)
+            }
+            val heading = compose.onNodeWithText(compose.activity.getString(R.string.all_apps), useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val home = compose.onNodeWithTag("homeButton").fetchSemanticsNode().boundsInRoot
+            assertTrue("Pulpit should share the title row", home.center.y in heading.top..heading.bottom)
+            assertTrue("Pulpit should sit to the right of the title", home.left >= heading.right)
+            compose.onNodeWithTag("drawerCategory:Dom").performClick().assertIsSelected()
+            val appName = textLayout(compose.onNodeWithTag("appLabel:${app.key}", useUnmergedTree = true))
+            val foreground = appName.layoutInput.style.color.luminance()
+            assertTrue(foreground > .95f)
+            assertEquals(app.label, appName.layoutInput.text.text)
+            assertFalse(appName.hasVisualOverflow)
+            assertEquals(Color.Unspecified, appName.layoutInput.style.background)
+            compose.onNodeWithTag("homeButton").performClick()
+        }
     }
 
     @Test fun hidingAppFiltersSearchButKeepsDesktopShortcut() {

@@ -1,6 +1,7 @@
 package pl.violetglass.launcher.pet
 
 import android.app.WallpaperManager
+import android.app.TimePickerDialog
 import android.view.Surface
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -11,12 +12,14 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
@@ -25,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -70,7 +74,7 @@ private class TerrainCache {
     val colors = arrayOf(Color(0xFF252337), Color(0xFF343045), Color(0xFF454156))
     private var dimensions = Size.Zero
     private var previousCell = 0f
-    fun update(size: Size, cell: Float) {
+    private fun update(size: Size, cell: Float) {
         if(size == dimensions && cell == previousCell) return
         dimensions = size; previousCell = cell
         for(layer in 0..2) paths[layer].apply {
@@ -82,6 +86,21 @@ private class TerrainCache {
                 lineTo(x, y); lineTo(x + cell, y); x += cell
             }
             lineTo(size.width + cell * 3, size.height); close()
+        }
+    }
+
+    fun draw(scope: DrawScope, tilt: Offset, thumbnail: Boolean = false) = with(scope) {
+        drawRect(Color(0xFF10101C))
+        val minimumCell = if (thumbnail) 2.dp else 12.dp
+        val cell = max(minimumCell.toPx(), size.width / 48)
+        val stroke = if (thumbnail) cell / 12f else 1.dp.toPx()
+        update(size, cell)
+        for (layer in paths.indices) {
+            val shift = tilt.x * (layer + 1) * .55f
+            withTransform({ translate(shift, tilt.y * layer * .3f) }) {
+                drawPath(paths[layer], colors[layer])
+                drawPath(paths[layer], Color(0xFFB8FFDD).copy(alpha = .12f + layer * .04f), style = Stroke(stroke))
+            }
         }
     }
 }
@@ -103,6 +122,9 @@ fun InteractiveWallpaperLayer(model: PetViewModel, settings: PetSettings, modifi
     val frame = model.ui.collectAsStateWithLifecycle()
     val photo = model.photo.collectAsStateWithLifecycle()
     val terrain = remember { TerrainCache() }
+    val pixelScene = remember(settings.background) {
+        settings.background.takeIf { it.isPixelScene }?.let(::PixelWallpaper)
+    }
     Canvas(modifier.fillMaxSize().testTag("interactiveWallpaper")) {
         val state = frame.value
         val tilt = state.parallax * (8.dp.toPx())
@@ -114,17 +136,10 @@ fun InteractiveWallpaperLayer(model: PetViewModel, settings: PetSettings, modifi
                     dstSize = IntSize(width, height), filterQuality = FilterQuality.Low)
             }
             drawRect(if(state.night) Color(0xFF19172D).copy(alpha = .08f) else Color(0xFFFFDDA9).copy(alpha = .025f))
+        } else if (pixelScene != null) {
+            pixelScene.draw(this, tilt)
         } else {
-            drawRect(Color(0xFF10101C))
-            val cell = max(12.dp.toPx(), size.width / 48)
-            terrain.update(size, cell)
-            for(layer in 0..2) {
-                val shift = tilt.x * (layer + 1) * .55f
-                withTransform({ translate(shift, tilt.y * layer * .3f) }) {
-                    drawPath(terrain.paths[layer], terrain.colors[layer])
-                    drawPath(terrain.paths[layer], Color(0xFFB8FFDD).copy(alpha = .12f + layer * .04f), style = Stroke(1.dp.toPx()))
-                }
-            }
+            terrain.draw(this, tilt)
         }
     }
 }
@@ -132,7 +147,9 @@ fun InteractiveWallpaperLayer(model: PetViewModel, settings: PetSettings, modifi
 /** One lifecycle owner drives physics, sensors and power. There is no background frame/timer job. */
 @Composable
 fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracker, settings: PetSettings,
-    active: Boolean, modifier: Modifier = Modifier, sceneLeftFraction: Float = 0f, interactive: Boolean = true) {
+    active: Boolean, modifier: Modifier = Modifier, sceneLeftFraction: Float = 0f, interactive: Boolean = true,
+    sceneRightFraction: Float = 1f, hopOrigin: Offset? = null, hopPageDelta: Float = 0f, pagerMoving: Boolean = false,
+    desktopPage: Int? = 0, restPage: Int? = null, desktopPosition: Float = 0f) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val activity = LocalActivity.current
     val context = LocalContext.current
@@ -142,7 +159,16 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
     val bottom = WindowInsets.navigationBars.getBottom(density)
     val statusTop = WindowInsets.statusBars.getTop(density)
     val sensor = remember(context, activity) { SensorParallaxController(context) { activity?.display?.rotation ?: Surface.ROTATION_0 } }
-    LaunchedEffect(tracker, model) { snapshotFlow { tracker.surfaces }.collect { model.surfaces(it) } }
+    val moving by rememberUpdatedState(pagerMoving)
+    val currentDesktop by rememberUpdatedState(desktopPage)
+    val favoriteDesktop by rememberUpdatedState(restPage)
+    LaunchedEffect(tracker, model) {
+        snapshotFlow {
+            currentDesktop?.takeUnless { moving }?.let { Triple(tracker.surfaces, it, favoriteDesktop) }
+        }.collect { viewport ->
+            if (viewport != null) model.surfaces(viewport.first, viewport.second, viewport.third)
+        }
+    }
     LaunchedEffect(active, settings.enabled, settings.wallpaperEnabled, settings.parallax, lifecycle, model) {
         if(!active || !settings.sceneEnabled) {
             model.pause(); return@LaunchedEffect
@@ -177,7 +203,7 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
                 }
                 var previous = 0L
                 while(isActive) withFrameNanos { nanos ->
-                    if(previous != 0L) model.frame(((nanos - previous) / 1e9).toFloat())
+                    if(previous != 0L) model.frame(((nanos - previous) / 1e9).toFloat(), moveCharacter = !moving)
                     previous = nanos
                 }
             } } finally {
@@ -196,7 +222,7 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
     val shown by remember(frame) { derivedStateOf { frame.value.visible } }
     Box(modifier.fillMaxSize().onSizeChanged { model.viewport(it.width, it.height, density.density, bottom) }) {
         Canvas(Modifier.fillMaxSize().testTag("petScene")) {
-            clipRect(left = size.width * sceneLeftFraction.coerceIn(0f, 1f)) {
+            clipRect(left = size.width * sceneLeftFraction.coerceIn(0f, 1f), right = size.width * sceneRightFraction.coerceIn(0f, 1f)) {
             val state = frame.value
             clipRect(top = if(settings.effectArea == PetEffectArea.LOWER_SCREEN) max(size.height * .45f, statusTop.toFloat()) else statusTop.toFloat(),
                 bottom = size.height - bottom) {
@@ -247,7 +273,11 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
                 }
             }
             }
-            if(settings.enabled) drawCharacter(state)
+            if(settings.enabled) {
+                val sleepingPage = state.sleepingDesktop
+                if (sleepingPage != null) translate(left = size.width * (sleepingPage - desktopPosition)) { drawCharacter(state) }
+                else drawCharacter(hopOrigin?.let { state.acrossDesktop(it, hopPageDelta, size.width) } ?: state)
+            }
             }
         }
         // Placement-phase reads move only this accessibility target, never the launcher grid.
@@ -268,7 +298,7 @@ fun TamagotchiCharacter(state: State<PetUiState>, modifier: Modifier = Modifier,
     Canvas(modifier) { drawCharacter(state.value, spriteSheet, frameSize) }
 }
 
-private fun DrawScope.drawCharacter(state: PetUiState, sprite: ImageBitmap? = null, frameSize: IntSize = IntSize(32, 32)) {
+internal fun DrawScope.drawCharacter(state: PetUiState, sprite: ImageBitmap? = null, frameSize: IntSize = IntSize(32, 32)) {
     if(!state.ready || !state.visible) return
     if(state.appearance == PetAppearance.HOME_ROBOT && sprite == null) { drawHomeRobot(state); return }
     val p = (state.sizePx / 16).roundToInt().coerceAtLeast(1).toFloat()
@@ -285,17 +315,21 @@ private fun DrawScope.drawCharacter(state: PetUiState, sprite: ImageBitmap? = nu
                 dstSize = IntSize((p * 16).toInt(), (p * 16).toInt()), filterQuality = FilterQuality.None)
         } else {
             fun pixel(x: Float, y: Float, w: Float, h: Float, color: Color) = drawRect(color, Offset(x * p, y * p), Size(w * p, h * p))
-            val body = if(state.mode == PetMode.SLEEPING) Color(0xFF9A94B0) else Color(0xFFB9F4DC)
-            pixel(3f, 3f, 3f, 4f, body); pixel(10f, 3f, 3f, 4f, body)
-            pixel(2f, 6f, 12f, 8f, Color(0xFF30343E)); pixel(3f, 6f, 10f, 7f, body)
-            pixel(0f, 10f, 3f, 2f, body)
-            val foot = if(state.mode == PetMode.WALKING || state.mode == PetMode.COURIER) sin(state.animationSeconds * 12) * .6f else 0f
-            pixel(4f, 14f + foot, 3f, 2f, body); pixel(10f, 14f - foot, 3f, 2f, body)
             val ink = Color(0xFF252735)
-            pixel(5f, if(state.mode == PetMode.SLEEPING) 9f else 8f, 2f, if(state.mode == PetMode.SLEEPING) .5f else 2f, ink)
-            pixel(10f, if(state.mode == PetMode.SLEEPING) 9f else 8f, 2f, if(state.mode == PetMode.SLEEPING) .5f else 2f, ink)
-            pixel(8f, 11f, 1f, 1f, ink)
-            if(state.mode == PetMode.COURIER) {
+            if (state.appearance == PetAppearance.PIXEL_FOX) {
+                drawPixelFox(state, p)
+            } else {
+                val body = if(state.mode == PetMode.SLEEPING) Color(0xFF9A94B0) else Color(0xFFB9F4DC)
+                pixel(3f, 3f, 3f, 4f, body); pixel(10f, 3f, 3f, 4f, body)
+                pixel(2f, 6f, 12f, 8f, Color(0xFF30343E)); pixel(3f, 6f, 10f, 7f, body)
+                pixel(0f, 10f, 3f, 2f, body)
+                val foot = if(state.mode == PetMode.WALKING || state.mode == PetMode.COURIER) sin(state.animationSeconds * 12) * .6f else 0f
+                pixel(4f, 14f + foot, 3f, 2f, body); pixel(10f, 14f - foot, 3f, 2f, body)
+                pixel(5f, if(state.mode == PetMode.SLEEPING) 9f else 8f, 2f, if(state.mode == PetMode.SLEEPING) .5f else 2f, ink)
+                pixel(10f, if(state.mode == PetMode.SLEEPING) 9f else 8f, 2f, if(state.mode == PetMode.SLEEPING) .5f else 2f, ink)
+                pixel(8f, 11f, 1f, 1f, ink)
+            }
+            if(state.mode == PetMode.COURIER || state.notificationCount > 0) {
                 pixel(9f, 9f, 7f, 5f, Color(0xFF4B5263)); pixel(9.5f, 9.5f, 6f, 4f, Color.White)
                 drawLine(ink, Offset(10f * p, 10f * p), Offset(12.5f * p, 12f * p), p * .5f)
                 drawLine(ink, Offset(15f * p, 10f * p), Offset(12.5f * p, 12f * p), p * .5f)
@@ -320,6 +354,39 @@ private fun DrawScope.drawCharacter(state: PetUiState, sprite: ImageBitmap? = nu
         }
         else -> Unit
     }
+}
+
+private fun DrawScope.drawPixelFox(state: PetUiState, unit: Float) {
+    val asleep = state.mode == PetMode.SLEEPING
+    val fur = if (asleep) Color(0xFFC27663) else Color(0xFFF28B47)
+    val light = if (asleep) Color(0xFFE7C0AA) else Color(0xFFFFE2B4)
+    val shade = Color(0xFFA74D3E)
+    val ink = Color(0xFF412A3E)
+    fun pixels(x: Float, y: Float, width: Float, height: Float, color: Color) =
+        drawRect(color, Offset(x * unit, y * unit), Size(width * unit, height * unit))
+
+    // Tail, ears and body fit the shared 16-pixel cell used by the launcher and game.
+    val tailLift = if (asleep) 0f else if (sin(state.animationSeconds * 5f) > .4f) 1f else 0f
+    pixels(1f, 10f - tailLift, 4f, 4f, shade)
+    pixels(1f, 10f - tailLift, 3f, 3f, fur)
+    pixels(0f, 8f - tailLift, 2f, 3f, light)
+    pixels(4f, 10f, 8f, 5f, shade)
+    pixels(5f, 11f, 6f, 4f, fur)
+    pixels(4f, 2f, 2f, 5f, ink)
+    pixels(12f, 2f, 2f, 5f, ink)
+    pixels(5f, 3f, 2f, 4f, fur)
+    pixels(11f, 3f, 2f, 4f, fur)
+    pixels(5f, 4f, 1f, 2f, light)
+    pixels(12f, 4f, 1f, 2f, light)
+    pixels(4f, 6f, 10f, 5f, fur)
+    pixels(5f, 9f, 8f, 2f, light)
+    pixels(7f, 11f, 4f, 2f, light)
+    pixels(6f, 8f, 1f, if (asleep) .5f else 1f, ink)
+    pixels(11f, 8f, 1f, if (asleep) .5f else 1f, ink)
+    pixels(8.5f, 10f, 1f, 1f, ink)
+    val stride = if (state.mode == PetMode.WALKING) sin(state.animationSeconds * 12f) * .5f else 0f
+    pixels(5f, 14f + stride, 2f, 1.5f, ink)
+    pixels(10f, 14f - stride, 2f, 1.5f, ink)
 }
 
 /** Vector companion inspired by the supplied reference. Its status display is on the belly. */
@@ -361,10 +428,11 @@ private fun DrawScope.drawHomeRobot(state: PetUiState) {
         drawRoundRect(edge.copy(alpha = .85f), Offset(28f,57f), Size(44f,35f), CornerRadius(10f), style = Stroke(1.3f))
         val tail = Path().apply { moveTo(42f,93f); lineTo(58f,93f); lineTo(50f,100f); close() }
         drawPath(tail, mint.copy(alpha = .75f))
-        val glow = when(state.mode) { PetMode.EATING -> Color(0xFFFFD86D); PetMode.COURIER -> Color(0xFFE2CCFF)
+        val bellyMode = if (state.notificationCount > 0) PetMode.COURIER else state.mode
+        val glow = when(bellyMode) { PetMode.EATING -> Color(0xFFFFD86D); PetMode.COURIER -> Color(0xFFE2CCFF)
             PetMode.HAPPY -> Color(0xFFFFA1C3); else -> mint }
         drawCircle(glow.copy(alpha = .08f + pulse * .1f), 15f, Offset(50f,75f))
-        when(state.mode) {
+        when(bellyMode) {
             PetMode.EATING -> {
                 val bolt = Path().apply { moveTo(52f,62f); lineTo(42f,76f); lineTo(49f,76f); lineTo(46f,87f)
                     lineTo(59f,71f); lineTo(52f,71f); close() }
@@ -401,6 +469,13 @@ private fun DrawScope.drawHomeRobot(state: PetUiState) {
 fun PetControls(model: PetViewModel) {
     val settings by model.settings.collectAsStateWithLifecycle()
     val state by model.ui.collectAsStateWithLifecycle()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, model) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            model.ui.first { it.ready }
+            model.refreshRest()
+        }
+    }
     val context = LocalContext.current
     val notificationSources by BadgeStore.petMessages.collectAsStateWithLifecycle()
     val launcher: LauncherViewModel = viewModel()
@@ -419,7 +494,11 @@ fun PetControls(model: PetViewModel) {
                 drawCharacter(PetUiState(ready = true, visible = true, feet = Offset(size.width / 2, size.height),
                     sizePx = size.minDimension * .9f, appearance = appearance, mode = PetMode.IDLE))
             }
-            Text(stringResource(if(appearance == PetAppearance.PIXEL_CAT) R.string.pet_pixel_cat else R.string.pet_home_robot))
+            Text(stringResource(when (appearance) {
+                PetAppearance.PIXEL_CAT -> R.string.pet_pixel_cat
+                PetAppearance.HOME_ROBOT -> R.string.pet_home_robot
+                PetAppearance.PIXEL_FOX -> R.string.pet_pixel_fox
+            }))
         }
     }
     Text(stringResource(R.string.pet_motion), style = MaterialTheme.typography.titleMedium)
@@ -428,6 +507,16 @@ fun PetControls(model: PetViewModel) {
         Text(stringResource(when(motion) { PetMotion.CALM -> R.string.pet_calm; PetMotion.NORMAL -> R.string.pet_normal_motion; PetMotion.FAST_HOPS -> R.string.pet_fast_hops }))
     } }
     PetRestPlaceControl(launcher, model, settings.restPlace)
+    Text(stringResource(R.string.pet_sleep_schedule), style = MaterialTheme.typography.titleMedium)
+    PetSleepTime(R.string.pet_sleep_at, settings.sleepAt, "petSleepAt") { value ->
+        model.configure { it.copy(sleepAt = value) }
+    }
+    PetSleepTime(R.string.pet_wake_at, settings.wakeAt, "petWakeAt") { value ->
+        model.configure { it.copy(wakeAt = value) }
+    }
+    if (settings.sleepAt == settings.wakeAt) {
+        Text(stringResource(R.string.pet_sleep_schedule_off), style = MaterialTheme.typography.bodySmall)
+    }
     Text(stringResource(R.string.pet_messages), style = MaterialTheme.typography.titleMedium)
     Text(if(sourceNames.isEmpty()) stringResource(R.string.pet_message_sources_none) else stringResource(R.string.pet_message_sources, sourceNames),
         style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("petMessageSources"))
@@ -457,6 +546,19 @@ fun PetControls(model: PetViewModel) {
         Text(stringResource(R.string.pet_notification_access))
     }
     if(messagePicker) PetMessageAppPicker(model) { messagePicker = false }
+}
+
+@Composable
+private fun PetSleepTime(label: Int, minutes: Int, tag: String, onTimeChanged: (Int) -> Unit) {
+    val context = LocalContext.current
+    val title = stringResource(label)
+    val hour = minutes / 60
+    val minute = minutes % 60
+    val formatted = stringResource(R.string.pet_sleep_time, hour, minute)
+    TextButton(onClick = {
+        TimePickerDialog(context, { _, selectedHour, selectedMinute -> onTimeChanged(selectedHour * 60 + selectedMinute) },
+            hour, minute, true).apply { setTitle(title) }.show()
+    }, modifier = Modifier.testTag(tag)) { Text("$title · $formatted") }
 }
 
 @Composable
@@ -598,7 +700,20 @@ fun WallpaperEffectControls(model: PetViewModel) {
     PetBackgroundMode.entries.forEach { mode ->
         TextButton(onClick = { model.configure { it.copy(background = mode) } }, modifier = Modifier.testTag("petBackground:${mode.name}")) {
             RadioButton(settings.background == mode, null)
-            Text(stringResource(if(mode == PetBackgroundMode.PHOTO_PARALLAX) R.string.pet_photo_mode else R.string.pet_cyber_mode))
+            if (mode.isProcedural) {
+                val pixelPreview = remember(mode) { mode.takeIf { it.isPixelScene }?.let(::PixelWallpaper) }
+                val terrainPreview = remember(mode) { if (mode.isPixelScene) null else TerrainCache() }
+                Canvas(Modifier.size(48.dp, 56.dp).clip(RoundedCornerShape(6.dp)).testTag("petBackgroundPreview:${mode.name}")) {
+                    pixelPreview?.draw(this, Offset.Zero) ?: terrainPreview?.draw(this, Offset.Zero, thumbnail = true)
+                }
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(stringResource(when (mode) {
+                PetBackgroundMode.PHOTO_PARALLAX -> R.string.pet_photo_mode
+                PetBackgroundMode.CYBER_LANDSCAPE -> R.string.pet_cyber_mode
+                PetBackgroundMode.PIXEL_FOREST -> R.string.pet_pixel_forest_mode
+                PetBackgroundMode.NEON_CITY -> R.string.pet_neon_city_mode
+            }))
         }
     }
     Row {
