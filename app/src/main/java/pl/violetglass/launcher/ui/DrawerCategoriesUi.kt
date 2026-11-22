@@ -27,21 +27,28 @@ import pl.violetglass.launcher.settings.MAX_DRAWER_CATEGORIES
 import pl.violetglass.launcher.settings.GlassTarget
 
 @Composable
-internal fun drawerTextShadow(target: GlassTarget = GlassTarget.DRAWER): Shadow? {
+internal fun drawerTextShadow(): Shadow? {
     val settings = LocalLauncherPreferences.current.glass
-    if (!settings.enabled || target in settings.disabledTargets || settings.transparency == 0) return null
+    if (!settings.enabled || GlassTarget.DRAWER in settings.disabledTargets || settings.transparency == 0) return null
     val radius = with(androidx.compose.ui.platform.LocalDensity.current) { 1.4.dp.toPx() }
     return Shadow(MaterialTheme.colorScheme.surface.copy(alpha = settings.transparency / 100f), blurRadius = radius)
 }
 @Composable
-internal fun DrawerSearchHint(modifier: Modifier = Modifier) {
-    val glass = LocalLauncherPreferences.current.glass
-    val outlined = LocalGlassPolicy.current.enabled && GlassTarget.SEARCH !in glass.disabledTargets && glass.transparency > 0
-    val style = MaterialTheme.typography.bodyLarge.copy(
-        color = if (outlined) Color.White else MaterialTheme.colorScheme.onSurface,
-        fontWeight = FontWeight.Medium,
-    )
-    DrawerAppLabel(stringResource(R.string.search_apps), modifier, style, outlined, maxLines = 1, singleWordSize = null)
+internal fun DrawerSearchField(query: String, onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier, enabled: Boolean = true) {
+    GlassSurface(GlassTarget.SEARCH, Modifier.fillMaxWidth().padding(vertical = 8.dp), backdrop = null) {
+        val ink = LocalContentColor.current
+        TextField(query, onQueryChange, modifier.fillMaxWidth(), enabled = enabled, singleLine = true,
+            placeholder = { Text(stringResource(R.string.search_apps), fontWeight = FontWeight.Medium, maxLines = 1) },
+            colors = TextFieldDefaults.colors(
+                focusedTextColor = ink, unfocusedTextColor = ink,
+                focusedPlaceholderColor = ink, unfocusedPlaceholderColor = ink, disabledPlaceholderColor = ink,
+                focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent, cursorColor = ink,
+                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+            ))
+    }
 }
 
 @Composable

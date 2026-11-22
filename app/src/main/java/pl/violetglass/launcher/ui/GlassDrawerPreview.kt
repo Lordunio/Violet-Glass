@@ -36,9 +36,7 @@ internal fun GlassDrawerPreview(apps: List<LauncherApp>, repository: AppsReposit
             GlassSurface(GlassTarget.DRAWER, Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.all_apps), style = MaterialTheme.typography.headlineSmall.copy(shadow = drawerTextShadow()))
-                    GlassSurface(GlassTarget.SEARCH, Modifier.fillMaxWidth()) {
-                        DrawerSearchHint(Modifier.padding(16.dp))
-                    }
+                    DrawerSearchField("", {}, enabled = false)
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val cell = (maxWidth / prefs.drawerColumns).coerceAtLeast(1.dp)
                         Row {

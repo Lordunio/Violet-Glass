@@ -414,7 +414,7 @@ class PersonalizationUiTest {
                 val style = textLayout(node).layoutInput.style
                 assertEquals(label, Color.Unspecified, style.background)
                 val luminance = style.color.luminance()
-                assertTrue(label, if (dark || label == compose.activity.getString(R.string.search_apps)) luminance > .65f else luminance < .15f)
+                assertTrue(label, if (dark) luminance > .65f else luminance < .15f)
             }
             val heading = compose.onNodeWithText(compose.activity.getString(R.string.all_apps), useUnmergedTree = true)
                 .fetchSemanticsNode().boundsInRoot

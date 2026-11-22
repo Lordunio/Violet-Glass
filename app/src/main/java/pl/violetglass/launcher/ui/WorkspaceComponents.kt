@@ -377,10 +377,9 @@ fun FolderOverlay(
         if(prefs.labels) workspaceLabelHeight(prefs) + 3.dp else 0.dp)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .45f)).clickable(onClick = onClose))
-        GlassSurface(GlassTarget.FOLDERS, Modifier.fillMaxWidth(.92f).heightIn(max = 520.dp).padding(vertical = 24.dp)
-            .onGloballyPositioned { onBounds(it.boundsInRoot()) }.pointerInput(Unit) { detectTapGestures {} },
-            backdrop = LocalWorkspaceBackdrop.current) {
-            Column(Modifier.padding(20.dp)) {
+        GlassSurface(GlassTarget.FOLDERS, Modifier.fillMaxWidth(.92f).heightIn(max = 520.dp)
+            .padding(vertical = 24.dp).pointerInput(Unit) { detectTapGestures {} }) {
+            Column(Modifier.onGloballyPositioned { onBounds(it.boundsInRoot()) }.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(folder.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = onClose) { Text(stringResource(R.string.close)) }

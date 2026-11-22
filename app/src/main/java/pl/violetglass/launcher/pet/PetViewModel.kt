@@ -329,13 +329,12 @@ class PetEngine(seed: Int = 19) {
         if(!state.visible) return
         happyFor = (happyFor - dt).coerceAtLeast(0f)
         hopCooldown = (hopCooldown - dt).coerceAtLeast(0f)
-        val stationary = power.plugged || happyFor > 0
         var feet = state.feet
         val calm = options.motion == PetMotion.CALM
         val fast = options.motion == PetMotion.FAST_HOPS
         val cooldown = if(fast) .65f else if(calm) 12f else 6f
         val speed = (if(fast) 150f else if(calm) 36f else 48f) * density
-        if(!airborne && !stationary) {
+        if(!airborne && happyFor <= 0f) {
             val source = current!!
             roamSeconds = min(ROAM_BEFORE_REST_SECONDS, roamSeconds + dt)
             decisionIn -= dt

@@ -1,0 +1,1 @@
+Jednolity styl Liquid Glass w folderach, szufladzie i wyszukiwarce. Czytelne pole wyszukiwania w szufladzie i podglądzie. Zwierzak porusza się także podczas ładowania telefonu.

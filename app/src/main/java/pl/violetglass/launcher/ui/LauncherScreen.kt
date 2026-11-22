@@ -440,7 +440,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
         val pageRegistry = if(screen == pager.currentPage) registry else inactiveRegistry
         val page = pages.desktop(screen)
         val drawerHere = showApps && screen == pager.currentPage
-        val needsBackdrop = folderId != null || menu != null || layoutDialog || personalization || widgetPicker ||
+        val needsBackdrop = menu != null || layoutDialog || personalization || widgetPicker ||
             resizingWidget != null || rename != null || newFolder || removeFolder != null || editDrawerCategories
         val labelBackdrop = when {
             drawerHere -> WorkspaceLabelBackdrop.SURFACE
@@ -458,6 +458,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             LocalWorkspaceLabelBackdrop provides labelBackdrop,
             LocalGlassBackdrop provides (wallpaperBackdrop ?: LocalSceneBackdrop.current),
         ) {
+        Box(Modifier.fillMaxSize()) {
         Scaffold(modifier = Modifier.then(if (screen != pager.currentPage) Modifier.clearAndSetSemantics {} else Modifier)
             .recordGlassBackdrop(if (needsBackdrop && screen == pager.currentPage) LocalWorkspaceBackdrop.current else null), containerColor = androidx.compose.ui.graphics.Color.Transparent,
             contentColor = if (prefs.systemWallpaper && !drawerHere) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onBackground,
@@ -481,20 +482,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                             style = MaterialTheme.typography.headlineSmall.copy(shadow = textShadow))
                         DrawerAction(closeDrawer, Modifier.testTag("homeButton"), stringResource(R.string.home))
                     }
-                    GlassSurface(GlassTarget.SEARCH, Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    val searchText = LocalContentColor.current
-                    val searchShadow = drawerTextShadow(GlassTarget.SEARCH)
-                    TextField(query, { query = it }, singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(shadow = searchShadow),
-                        placeholder = { DrawerSearchHint() },
-                        colors = TextFieldDefaults.colors(focusedTextColor = searchText, unfocusedTextColor = searchText,
-                            focusedPlaceholderColor = searchText, unfocusedPlaceholderColor = searchText,
-                            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                            cursorColor = searchText,
-                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent),
-                        modifier = Modifier.fillMaxWidth().testTag("appSearch").focusRequester(searchFocus))
-                    }
+                    DrawerSearchField(query, { query = it }, Modifier.testTag("appSearch").focusRequester(searchFocus))
                     DrawerCategoryBar(prefs.drawerCategories, selectedCategory, { drawerCategory = it }) { editDrawerCategories = true }
                     key(query, selectedCategory) {
                         val gridState = rememberLazyGridState()
@@ -579,6 +567,12 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             }
         }
         }
+        val folder = layout?.items?.find { it.id == folderId && it.isFolder }
+        if (folder != null && !drawerHere && screen == pager.currentPage) {
+            FolderOverlay(folder, layout, apps, model.repository, state.revision, registry,
+                { folderId = null }, launch, openMenu, onBounds = { folderArea = it })
+        }
+        }
         }
         } else if (pages.kind(screen) == LauncherPage.HOME_ASSISTANT) {
             if(!floatingHa) {
@@ -624,9 +618,6 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
         val darkWallpaper = desktopBars && petSettings.wallpaperEnabled && petSettings.background.isProcedural
         LauncherSystemBars(darkWallpaper || showGame, !showHa && !showGame && !darkWallpaper &&
             (prefs.systemWallpaper || desktopBars && petSettings.wallpaperEnabled && petPhoto != null))
-        val folder = layout?.items?.find { it.id == folderId && it.isFolder }
-        if (folder != null && !showApps) FolderOverlay(folder, layout, apps, model.repository, state.revision, registry,
-            { folderId = null }, launch, openMenu, onBounds = { folderArea = it })
         drag?.takeIf { it.moved }?.let { session ->
             Surface(Modifier.offset { IntOffset((session.point.x - previewHalf).roundToInt(), (session.point.y - previewHalf).roundToInt()) }
                 .size(76.dp).zIndex(5f), shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.primaryContainer, shadowElevation = 10.dp) {

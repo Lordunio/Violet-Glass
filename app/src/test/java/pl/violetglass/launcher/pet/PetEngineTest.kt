@@ -343,6 +343,22 @@ class PetEngineTest {
         assertTrue(engine.state.animationSeconds > startTime)
     }
 
+    @Test fun chargingAllowsDaytimeRoamingInEveryMotionMode() {
+        for (motion in PetMotion.entries) {
+            val pet = engine()
+            val config = PetSettings(enabled = true, motion = motion)
+            pet.environment(PowerState(76, true), night = false)
+            val origin = pet.state.feet
+            var distance = 0f
+            repeat(3600) {
+                pet.tick(1f / 120f, PetWeather.NONE, Offset.Zero, config)
+                distance = maxOf(distance, (pet.state.feet - origin).getDistance())
+            }
+            assertTrue("Charging pet stayed put in $motion", distance > pet.state.sizePx / 2)
+            assertTrue(pet.state.charging)
+        }
+    }
+
     @Test fun powerNightPettingAndNotificationSelectRealStates() {
         val engine = engine()
         engine.environment(PowerState(8, false), false); engine.tick(.02f, PetWeather.NONE, Offset.Zero)

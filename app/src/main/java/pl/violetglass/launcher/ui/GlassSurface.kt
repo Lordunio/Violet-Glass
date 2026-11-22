@@ -119,7 +119,6 @@ fun GlassSurface(
     val violet = when {
         compact -> Color(0xFF8F63C5)
         dark -> Color(0xFF4C3071)
-        target == GlassTarget.DRAWER || target == GlassTarget.SEARCH -> Color(0xFFCFACEF)
         else -> Color(0xFFE2CCFA)
     }
     val glassTint = if (target == GlassTarget.SEARCH) lerp(violet, colors.onSurface, .09f) else violet
@@ -129,13 +128,22 @@ fun GlassSurface(
     val effect = remember(radius, hasBackdrop) { if (radius > 0 && hasBackdrop) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP).asComposeRenderEffect() else null }
     var position by remember { mutableStateOf(Offset.Unspecified) }
     val opacity = 1f - settings.transparency.coerceIn(0, 100) / 100f
-    val tintAlpha = if (active) opacity else 1f
+    // Keep editable text legible even over the brightest and darkest wallpaper.
+    val tintAlpha = when {
+        !active -> 1f
+        target == GlassTarget.SEARCH -> .82f + .18f * opacity
+        else -> opacity
+    }
+    val flatSurface = when (target) {
+        GlassTarget.FOLDERS, GlassTarget.DRAWER, GlassTarget.SEARCH -> true
+        else -> false
+    }
     val reflection = policy.reflection * if (compact) tintAlpha else 1f
     Box(modifier.semantics { this[GlassActiveKey] = active; this[GlassBlurKey] = blur; this[GlassModeKey] = policy.mode.name; this[GlassTargetKey] = target.name }
         .then(if (active && !compact && policy.durationMillis > 0) Modifier.graphicsLayer {
             alpha = progress; scaleX = .985f + .015f * progress; scaleY = scaleX
         } else Modifier)
-        .then(if (active && !compact && policy.mode != GlassMode.LITE) Modifier.shadow(10.dp, shape, clip = false,
+        .then(if (active && !compact && !flatSurface && policy.mode != GlassMode.LITE) Modifier.shadow(10.dp, shape, clip = false,
             ambientColor = Color(0xFF442073), spotColor = Color(0xFF442073)) else Modifier)
         .clip(shape).then(if (effect != null) Modifier.onGloballyPositioned { position = it.localToScreen(Offset.Zero) } else Modifier)) {
         if (effect != null && backdrop != null) {
@@ -152,7 +160,7 @@ fun GlassSurface(
             Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(
                 Color.White.copy(alpha = .26f * reflection), Color(0xFFBF91FF).copy(alpha = .08f * reflection),
                 Color.Transparent, Color.White.copy(alpha = .08f * reflection))))
-                .then(if (compact) Modifier else Modifier.border(1.dp, Brush.linearGradient(listOf(
+                .then(if (compact || flatSurface) Modifier else Modifier.border(1.dp, Brush.linearGradient(listOf(
                     Color.White.copy(alpha = .48f * reflection), colors.primary.copy(alpha = .12f),
                     Color.White.copy(alpha = .12f * reflection))), shape)))
         }

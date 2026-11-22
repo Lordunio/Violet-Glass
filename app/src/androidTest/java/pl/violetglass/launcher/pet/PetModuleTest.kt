@@ -418,6 +418,20 @@ class PetUiTest {
         compose.onNodeWithTag("appSearch").assertIsDisplayed()
         assertEquals(saved, model.workspace.value.layout)
     }
+    @Test fun petMovesOnScreenWhilePhoneCharges() {
+        enable()
+        runBlocking { repository.update { it.copy(sleepAt = 0, wakeAt = 0, motion = PetMotion.FAST_HOPS) } }
+        shell("dumpsys battery set ac 1")
+        framesUntil { pet.ui.value.charging && pet.ui.value.sleepingDesktop == null }
+        val character = compose.onNodeWithTag("petCharacter")
+        val start = character.fetchSemanticsNode().boundsInRoot.center
+        val feet = pet.ui.value.feet
+        framesUntil { (pet.ui.value.feet - feet).getDistance() > pet.ui.value.sizePx * .5f }
+        compose.mainClock.advanceTimeByFrame()
+        assertTrue((character.fetchSemanticsNode().boundsInRoot.center - start).getDistance() > 2f)
+        assertTrue(pet.ui.value.charging)
+    }
+
     @Test fun pauseCompletelyStopsFrameLoopAndPowerReceiverThenResumes() {
         enable()
         framesUntil { pet.powerRegistrations == 1 }

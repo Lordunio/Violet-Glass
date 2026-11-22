@@ -51,7 +51,7 @@ class GlassRenderTest {
         }
     }
 
-    @Test fun searchHintKeepsLightAndDarkLetterEdgesAtHighTransparency() {
+    @Test fun searchHintKeepsContrastAtHighTransparency() {
         var transparency by mutableIntStateOf(75)
         compose.setContent {
             val glass = GlassSettings(mode = GlassMode.LITE, transparency = transparency)
@@ -61,9 +61,7 @@ class GlassRenderTest {
                     Column {
                         listOf(Color.Black, Color.White, Color(0xFF675577)).forEachIndexed { index, background ->
                             Box(Modifier.background(background)) {
-                                GlassSurface(GlassTarget.SEARCH) {
-                                    DrawerSearchHint(Modifier.padding(10.dp).testTag("hint$index"))
-                                }
+                                DrawerSearchField("", {}, Modifier.testTag("hint$index"), enabled = false)
                             }
                         }
                     }
@@ -85,7 +83,7 @@ class GlassRenderTest {
         }
     }
 
-    @Test fun drawerAndSearchUseTheFullTransparencyRange() {
+    @Test fun drawerAndFolderUseFullTransparencyWhileSearchKeepsContrast() {
         var transparency by mutableIntStateOf(0)
         compose.setContent {
             val glass = GlassSettings(mode = GlassMode.LITE, transparency = transparency)
@@ -96,20 +94,22 @@ class GlassRenderTest {
                         Row(Modifier.matchParentSize()) {
                             GlassSurface(GlassTarget.DRAWER, Modifier.weight(1f).fillMaxHeight()) {}
                             GlassSurface(GlassTarget.SEARCH, Modifier.weight(1f).fillMaxHeight()) {}
+                            GlassSurface(GlassTarget.FOLDERS, Modifier.weight(1f).fillMaxHeight()) {}
                         }
                     }
                 }
             }
         }
         fun samples(): List<Color> = compose.onNodeWithTag("drawerFixture").captureToImage().toPixelMap().let { pixels ->
-            listOf(pixels[pixels.width / 4, pixels.height / 2], pixels[pixels.width * 3 / 4, pixels.height / 2])
+            listOf(pixels.width / 6, pixels.width / 2, pixels.width * 5 / 6).map { pixels[it, pixels.height / 2] }
         }
         val opaque = samples()
         assertTrue(opaque.all { it.blue > it.red && it.red > it.green })
         for (step in listOf(25, 50, 75, 100)) {
             compose.runOnIdle { transparency = step }
-            samples().zip(opaque).forEach { (color, start) ->
-                val ratio = 1f - step / 100f
+            samples().zip(opaque).forEachIndexed { index, (color, start) ->
+                val opacity = 1f - step / 100f
+                val ratio = if (index == 1) .82f + .18f * opacity else opacity
                 assertEquals("Blue channel at $step% transparency", start.blue * ratio, color.blue, .02f)
             }
         }

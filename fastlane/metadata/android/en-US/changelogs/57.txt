@@ -1,0 +1,1 @@
+Consistent glass styling across folders, the app drawer and search. The search field remains legible in the drawer and preview. The companion can move while the phone charges.
