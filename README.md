@@ -8,6 +8,15 @@ Android launcher with configurable home screens, a glass theme, app categories, 
 - Enable the companion and wallpaper effects independently. Notification badges and the companion envelope use Android notification access when the user grants it.
 - Export layout and preferences as JSON. Restored Android widgets need to be bound again.
 
+## Screenshots
+
+<p>
+  <img src="fastlane/metadata/android/pl-PL/images/phoneScreenshots/1.png" alt="Home screen with the pixel fox" width="190">
+  <img src="fastlane/metadata/android/pl-PL/images/phoneScreenshots/2.png" alt="Open Tools folder" width="190">
+  <img src="fastlane/metadata/android/pl-PL/images/phoneScreenshots/3.png" alt="Liquid Glass app drawer" width="190">
+  <img src="fastlane/metadata/android/pl-PL/images/phoneScreenshots/4.png" alt="Fly Hunter in-game panel" width="190">
+</p>
+
 ## Build from source
 
 Use OpenJDK 17 or newer, the Android SDK Platform 37 and the checked Gradle wrapper. The app requires Android 12 (API 31) or newer. Set `ANDROID_HOME` to your SDK installation.
