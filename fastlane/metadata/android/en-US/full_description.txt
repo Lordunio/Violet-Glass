@@ -2,4 +2,4 @@ Violet Glass is an Android launcher with customizable home screens, a glass them
 
 Add a dedicated panel for your own Home Assistant dashboard. Enable a desktop companion, wallpaper effects or both. The companion moves around icons and widgets and can show an envelope for notifications from selected apps when Android notification access is granted.
 
-Export and restore your layout and preferences. The launcher interface is primarily in Polish.
+Feed, clean and play with your companion using pet care widgets. Export and restore your layout and preferences. Choose Polish or English in launcher settings.

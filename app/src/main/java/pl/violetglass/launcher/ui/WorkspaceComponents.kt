@@ -90,6 +90,7 @@ fun WorkspaceGrid(
     revision: Long, registry: DragRegistry, selected: Slot?, placing: Boolean,
     onSlot: (Slot) -> Unit, onLaunch: (LayoutItem) -> Unit, onMenu: (ItemPayload) -> Unit,
     modifier: Modifier = Modifier,
+    pet: pl.violetglass.launcher.pet.PetViewModel? = null,
 ) {
     val prefs = LocalLauncherPreferences.current
     BoxWithConstraints(modifier) {
@@ -110,11 +111,14 @@ fun WorkspaceGrid(
                 }
                 layout.items.filter { it.isWidget && it.container == pageContainer(page) }.forEach { widget ->
                     key(widget.id, widget.widgetId) {
+                        val kind = PetWidgetKind.fromProvider(widget.provider)
+                        val areaHeight = cellHeight * widget.spanY
+                        val height = kind?.preferredHeight(widget.spanY)?.let { minOf(it, areaHeight) } ?: areaHeight
                         HostedWidget(widget, registry, revision, onMenu,
                             Modifier.offset(cellWidth * (widget.position % layout.config.columns), cellHeight * (widget.position / layout.config.columns))
-                                .size(cellWidth * widget.spanX, cellHeight * widget.spanY).padding(prefs.gap.dp)
-                                .then(if(widget.widgetId == null) Modifier else Modifier.registerPlatformSurface(
-                                    if(widget.provider?.contains("search", ignoreCase = true) == true) "search:${widget.id}" else "widget:${widget.id}")))
+                                .size(cellWidth * widget.spanX, height).padding(prefs.gap.dp)
+                                .then(if(widget.widgetId == null && PetWidgetKind.fromProvider(widget.provider) == null) Modifier else Modifier.registerPlatformSurface(
+                                    if(widget.provider?.contains("search", ignoreCase = true) == true) "search:${widget.id}" else "widget:${widget.id}")), pet = pet)
                     }
                 }
                 layout.items.filter { it.isExpandedFolder && it.container == pageContainer(page) }.forEach { folder ->
@@ -156,7 +160,7 @@ fun WorkspaceDock(
             }
         }
     }
-    if (prefs.dockBackground) GlassSurface(GlassTarget.DOCK, Modifier.semantics { contentDescription = dockLabel }.registerPlatformSurface("dock:bottom"), content = dockContent)
+    if (prefs.dockBackground) GlassSurface(GlassTarget.DOCK, Modifier.semantics { contentDescription = dockLabel }.registerPlatformSurface("dock:bottom"), proportionalCorners = true, content = dockContent)
     else Box(Modifier.semantics { contentDescription = dockLabel }.registerPlatformSurface("dock:bottom")) { dockContent() }
 }
 
@@ -194,7 +198,7 @@ fun WorkspaceSideDock(
             }
         }
     }
-    if (prefs.dockBackground) GlassSurface(GlassTarget.DOCK, Modifier.semantics { contentDescription = dockLabel }, content = content)
+    if (prefs.dockBackground) GlassSurface(GlassTarget.DOCK, Modifier.semantics { contentDescription = dockLabel }, proportionalCorners = true, content = content)
     else Box(Modifier.semantics { contentDescription = dockLabel }) { content() }
 }
 
@@ -255,10 +259,11 @@ fun ItemTile(
                         val count = layout.children(item.id).mapNotNull { apps[it.appKey]?.component?.packageName }
                             .distinct().sumOf { counts[it] ?: 0 }
                         WithNotificationBadge(count, Modifier.size(iconSize).then(platform)) {
-                            GlassSurface(GlassTarget.FOLDERS, modifier = Modifier.size(iconSize),
-                                plainColor = MaterialTheme.colorScheme.secondaryContainer,
-                                compact = true) {
-                                Column(Modifier.fillMaxSize().padding(3.dp)) {
+                            GlassSurface(GlassTarget.FOLDERS, modifier = Modifier.size(iconSize), proportionalCorners = true) {
+                                val glass = prefs.glass
+                                val corners = if (LocalGlassPolicy.current.enabled && GlassTarget.FOLDERS !in glass.disabledTargets) glass.corners else 26
+                                val inset = maxOf(3.dp, iconSize * (corners.coerceIn(0, 48) / 48f * .09f))
+                                Column(Modifier.fillMaxSize().padding(inset)) {
                                     repeat(columns) { row ->
                                         Row(Modifier.weight(1f)) {
                                             repeat(columns) { col ->

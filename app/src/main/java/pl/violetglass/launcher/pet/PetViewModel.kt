@@ -7,6 +7,8 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.PowerManager
+import pl.violetglass.launcher.R
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
@@ -53,14 +55,17 @@ class PetRepository(private val store: DataStore<Preferences>) {
         private val recovering = booleanPreferencesKey("recovering")
         private val happiness = floatPreferencesKey("happiness")
         private val cleanliness = floatPreferencesKey("cleanliness")
+        private val fullness = floatPreferencesKey("fullness")
         private val updated = longPreferencesKey("updated")
         private inline fun <reified T : Enum<T>> enum(value: String?, default: T) = enumValues<T>().find { it.name == value } ?: default
         private fun stats(p: Preferences, now: Long) = PetStats(p[energy]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 80f,
             p[happiness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 80f,
-            p[cleanliness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 100f, p[updated] ?: now, p[recovering] ?: false)
+            p[cleanliness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 100f, p[updated] ?: now, p[recovering] ?: false,
+            p[fullness]?.takeIf(Float::isFinite)?.coerceIn(0f, 100f) ?: 80f)
         private fun put(p: MutablePreferences, stats: PetStats) {
             p[energy] = stats.energy; p[happiness] = stats.happiness; p[cleanliness] = stats.cleanliness; p[updated] = stats.lastUpdatedTimestamp
             p[recovering] = stats.recovering
+            p[fullness] = stats.fullness
         }
         private fun configuration(p: Preferences) = PetSettings(p[enabled] ?: false, enum(p[background], PetBackgroundMode.PHOTO_PARALLAX),
             enum(p[weather], PetWeather.AUTO), p[parallax] ?: true, enum(p[appearance], PetAppearance.PIXEL_CAT),
@@ -294,6 +299,11 @@ class PetEngine(seed: Int = 19) {
             happiness = (stats.happiness + 3).coerceAtMost(100f)))
     }
     fun clean(now: Long) { pat(now); state = state.copy(stats = state.stats.copy(cleanliness = 100f)) }
+    fun feed(now: Long) {
+        advanceStats(now)
+        val stats = state.stats
+        state = state.copy(stats = stats.copy(fullness = (stats.fullness + 35f).coerceAtMost(100f)))
+    }
     fun notification() { notifications(1) }
     fun notifications(count: Int) { state = state.copy(notificationCount = count.coerceIn(0, 999)) }
     fun environment(value: PowerState, night: Boolean, sleep: Boolean = night) {
@@ -514,27 +524,65 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
     internal val engine = PetEngine()
     private val mutable = MutableStateFlow(engine.state)
     val ui: StateFlow<PetUiState> = mutable.asStateFlow()
+    private val careFeedback = MutableStateFlow<PetCareEvent?>(null)
+    internal val careEvents = careFeedback.asStateFlow()
     private val image = MutableStateFlow<ImageBitmap?>(null)
     val photo = image.asStateFlow()
-    private val errors = MutableStateFlow<String?>(null)
+    private val errors = MutableStateFlow<Int?>(null)
     val error = errors.asStateFlow()
     internal var frameCount = 0L; private set
     internal var running = false; private set
     internal var powerRegistrations = 0; private set
     private var power = PowerState()
-    private var lastStats = 0L; private var lastSave = 0L; private var lastEnvironment = 0L
+    private var lastSave = 0L
     private var parallax = Offset.Zero
+    private var foreground = false
+    private val powerManager = application.getSystemService(PowerManager::class.java)
+    private var screenInteractive = powerManager.isInteractive
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_ON -> setScreenInteractive(true)
+                Intent.ACTION_SCREEN_OFF -> setScreenInteractive(false)
+            }
+        }
+    }
     private val photoFile get() = File(getApplication<Application>().filesDir, "pet-wallpaper.jpg")
-    init { viewModelScope.launch { engine.restore(repository.resume(System.currentTimeMillis())); publish(); reloadPhoto() } }
+    init {
+        val filter = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) }
+        ContextCompat.registerReceiver(application, screenReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        viewModelScope.launch { engine.restore(repository.resume(System.currentTimeMillis())); publish(); reloadPhoto() }
+    }
+    override fun onCleared() {
+        getApplication<Application>().unregisterReceiver(screenReceiver)
+        super.onCleared()
+    }
     private fun publish() { mutable.value = engine.state }
     fun configure(change: (PetSettings) -> PetSettings) { viewModelScope.launch { repository.update(change) } }
     fun viewport(width: Int, height: Int, density: Float, bottom: Int) { engine.viewport(width.toFloat(), height.toFloat(), density, bottom.toFloat()); publish() }
     fun surfaces(value: List<PlatformSurface>, page: Int, restPage: Int?) { engine.surfaces(value, page, restPage); publish() }
+    fun setForeground(value: Boolean) {
+        if (foreground == value) return
+        if (engine.state.ready) persist()
+        foreground = value
+    }
+    internal fun setScreenInteractive(value: Boolean, now: Long = System.currentTimeMillis()) {
+        if (screenInteractive == value) return
+        // Settle elapsed time using the state that applied before this transition.
+        if (engine.state.ready) persist(now)
+        screenInteractive = value
+    }
+    private fun advanceElapsed(now: Long) {
+        if (screenInteractive) {
+            environment(now)
+            engine.advanceStats(now)
+        } else engine.restWhileAway(now)
+    }
     fun resume() {
         if (running) return
-        val now = System.currentTimeMillis()
-        engine.restWhileAway(now)
-        running = true; environment(now); publish()
+        advanceElapsed(System.currentTimeMillis())
+        running = true
+        publish()
     }
     fun pause() {
         if (!running) return
@@ -552,42 +600,62 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         val config = settings.value
         val minute = clock.hour * 60 + clock.minute
         engine.environment(power, minute >= DEFAULT_SLEEP_AT || minute < DEFAULT_WAKE_AT, config.scheduledSleep(minute))
-        lastEnvironment = now
     }
-    fun frame(seconds: Float, now: Long = System.currentTimeMillis(), moveCharacter: Boolean = true) {
-        if(!running) return
-        frameCount++
-        if(now - lastStats >= 1000 || now < lastEnvironment) {
-            environment(now)
-            engine.advanceStats(now)
-            lastStats = now
+    fun refreshStats(now: Long = System.currentTimeMillis()) {
+        if (!foreground || !engine.state.ready) return
+        if (now - lastSave >= 60_000) persist(now)
+        else {
+            advanceElapsed(now)
+            publish()
         }
+    }
+    fun frame(seconds: Float, moveCharacter: Boolean = true) {
+        if (!running) return
+        frameCount++
         val config = settings.value
-        engine.tick(seconds, if(config.wallpaperEnabled) config.weather else PetWeather.NONE, parallax, config, moveCharacter); publish()
-        if(now - lastSave >= 60_000) persist()
+        engine.tick(seconds, if (config.wallpaperEnabled) config.weather else PetWeather.NONE, parallax, config, moveCharacter)
+        publish()
     }
     fun hit(point: Offset): Boolean = settings.value.enabled && engine.state.let { it.visible && Rect(it.feet.x - it.sizePx / 2, it.feet.y - it.sizePx, it.feet.x + it.sizePx / 2, it.feet.y).contains(point) }
     fun touch(point: Offset) { if(hit(point)) pat() else { engine.target(point); publish() } }
     fun pat() {
         if (!engine.state.ready) return
         val now = System.currentTimeMillis()
-        if (!running) engine.restWhileAway(now)
+        advanceElapsed(now)
         engine.pat(now)
         persist(now)
     }
     fun clean() {
         if (!engine.state.ready) return
         val now = System.currentTimeMillis()
-        if (!running) engine.restWhileAway(now)
+        advanceElapsed(now)
         engine.clean(now)
         persist(now)
     }
+    fun feed() {
+        if (!engine.state.ready) return
+        val now = System.currentTimeMillis()
+        advanceElapsed(now)
+        engine.feed(now)
+        persist(now)
+    }
+    internal fun care(action: PetCareAction, roomId: String) {
+        if (!engine.state.ready) return
+        when (action) {
+            PetCareAction.FEED -> feed()
+            PetCareAction.CLEAN -> clean()
+            PetCareAction.PAT, PetCareAction.PLAY -> pat()
+            PetCareAction.REST -> configure { it.copy(restPlace = petRestItem(roomId)) }
+        }
+        careFeedback.value = PetCareEvent(action, android.os.SystemClock.elapsedRealtimeNanos())
+    }
+
     fun messages(active: pl.violetglass.launcher.notifications.PetNotificationSources) {
         val config = settings.value
         engine.notifications(config.messageCount(if(config.messagesOnly) active.messages else active.all)); publish()
     }
     private fun persist(now: Long = System.currentTimeMillis()) {
-        if (running) engine.advanceStats(now) else engine.restWhileAway(now)
+        advanceElapsed(now)
         publish()
         val snapshot = engine.state.stats; lastSave = now
         if(snapshot.lastUpdatedTimestamp > 0 && engine.state.ready) viewModelScope.launch { repository.save(snapshot) }
@@ -615,7 +683,7 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
         awaitClose { context.unregisterReceiver(receiver); powerRegistrations-- }
     }.conflate()
     private suspend fun reloadPhoto() { image.value = withContext(Dispatchers.IO) { if(photoFile.exists()) BitmapFactory.decodeFile(photoFile.path)?.asImageBitmap() else null } }
-    fun choosePhoto(uri: Uri) { viewModelScope.launch {
+    fun choosePhoto(uri: Uri, enableWallpaper: Boolean = false) { viewModelScope.launch {
         try {
             withContext(Dispatchers.IO) {
                 val bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(getApplication<Application>().contentResolver, uri)) { decoder, info, _ ->
@@ -627,9 +695,11 @@ class PetViewModel(application: Application) : AndroidViewModel(application) {
                 try { temporary.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it)) }; check(temporary.renameTo(photoFile)) }
                 finally { bitmap.recycle(); temporary.delete() }
             }
-            reloadPhoto(); errors.value = null
+            reloadPhoto()
+            if (enableWallpaper) repository.update { it.copy(wallpaperEnabled = true, background = PetBackgroundMode.PHOTO_PARALLAX) }
+            errors.value = null
         } catch (cancel: CancellationException) { throw cancel }
-        catch (_: Exception) { errors.value = "Nie udało się wczytać zdjęcia. Wybierz je ponownie." }
+        catch (_: Exception) { errors.value = R.string.pet_photo_error }
     } }
     fun systemPhoto() { viewModelScope.launch { withContext(Dispatchers.IO) { photoFile.delete() }; image.value = null; errors.value = null } }
 }

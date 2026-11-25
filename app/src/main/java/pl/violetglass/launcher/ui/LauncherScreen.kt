@@ -533,7 +533,7 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                             .semantics { onLongClick(resourceValues.getString(R.string.desktop_options)) { desktopOptions = true; true } }
                             .onGloballyPositioned { if(screen == pager.currentPage) pageArea = it.boundsInRoot() }) {
                         WorkspaceGrid(layout, page, apps, model.repository, state.revision, pageRegistry, selected, placement != null,
-                            selectSlot, launch, openMenu, Modifier.fillMaxSize())
+                            selectSlot, launch, openMenu, Modifier.fillMaxSize(), pet = pet)
                     }
                     Row(Modifier.fillMaxWidth().height(26.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         repeat(layout.config.pages) { index ->
@@ -613,7 +613,8 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
             sceneLeftFraction = petSceneLeft, interactive = petVisible, sceneRightFraction = petSceneRight,
             hopOrigin = if (desktopHop) hopOrigin else null, hopPageDelta = hopDelta, pagerMoving = pager.isScrollInProgress,
             desktopPage = if (onDesktop) desktopPage else null, restPage = restDesktop,
-            desktopPosition = pagerPosition - pages.firstDesktop)
+            desktopPosition = pagerPosition - pages.firstDesktop,
+            trackCareStats = petSettings.enabled || layout?.items?.any { PetWidgetKind.fromProvider(it.provider) != null } == true)
         val desktopBars = !showApps && onDesktop
         val darkWallpaper = desktopBars && petSettings.wallpaperEnabled && petSettings.background.isProcedural
         LauncherSystemBars(darkWallpaper || showGame, !showHa && !showGame && !darkWallpaper &&
@@ -659,7 +660,10 @@ private fun LauncherContent(model: LauncherViewModel, homeEvent: Int, isDefault:
                 preview = true
             }
         }, initialSection = settingsSection)
-    if (widgetPicker && widgetController != null) WidgetPicker(widgetController, desktopPage, { widgetPicker = false })
+    if (widgetPicker && widgetController != null) WidgetPicker(widgetController, desktopPage, { widgetPicker = false }) { kind, title ->
+        model.editLayout { LayoutEngine.addBuiltInWidget(it, kind.provider, title, kind.columns, kind.rows, desktopPage) }
+        widgetPicker = false
+    }
     if (layout != null) {
         editingIcon?.let { payload -> payload.appKey?.let { key -> IndividualIconPicker(model, key, payload.title) { editingIcon = null } } }
         resizingWidget?.let { item -> WidgetResizeDialog(item, layout.config, { resizingWidget = null }) { x, y ->

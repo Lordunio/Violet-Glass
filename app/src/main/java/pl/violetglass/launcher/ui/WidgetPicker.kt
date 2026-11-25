@@ -28,7 +28,7 @@ import pl.violetglass.launcher.settings.GlassTarget
 import pl.violetglass.launcher.widgets.*
 
 @Composable
-fun WidgetPicker(controller: WidgetController, page: Int, onDismiss: () -> Unit) {
+fun WidgetPicker(controller: WidgetController, page: Int, onDismiss: () -> Unit, onAddPet: (PetWidgetKind, String) -> Unit) {
     var retry by remember { mutableIntStateOf(0) }
     var failed by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -40,6 +40,10 @@ fun WidgetPicker(controller: WidgetController, page: Int, onDismiss: () -> Unit)
         catch (_: Exception) { failed = true; value = emptyList() }
     }
     val groups = remember(entries, query) { entries.orEmpty().filter { it.matches(query) }.groupBy { it.packageName } }
+    val petGroup = stringResource(R.string.pet_widget_group)
+    val petEntries = PetWidgetKind.entries.map { it to stringResource(it.title) }.filter { (_, name) ->
+        query.isBlank() || petGroup.contains(query.trim(), ignoreCase = true) || name.contains(query.trim(), ignoreCase = true)
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         GlassSurface(GlassTarget.PANELS, Modifier.fillMaxWidth(.94f).fillMaxHeight(.92f), backdrop = LocalWorkspaceBackdrop.current) {
             Column(Modifier.padding(16.dp)) {
@@ -49,8 +53,29 @@ fun WidgetPicker(controller: WidgetController, page: Int, onDismiss: () -> Unit)
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), modifier = Modifier.fillMaxWidth().testTag("widgetSearch"))
                 if (entries == null) CircularProgressIndicator()
                 if (failed) TextButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
-                if (entries != null && groups.isEmpty()) Text(stringResource(if(query.isBlank()) R.string.widget_none else R.string.widget_search_empty), Modifier.padding(vertical = 12.dp))
+                if (entries != null && groups.isEmpty() && petEntries.isEmpty()) Text(stringResource(if(query.isBlank()) R.string.widget_none else R.string.widget_search_empty), Modifier.padding(vertical = 12.dp))
                 LazyColumn(Modifier.weight(1f).testTag("widgetProviders"), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    if (petEntries.isNotEmpty()) {
+                        val petGroupKey = "violet.pet"
+                        val open = query.isNotBlank() || petGroupKey in expanded
+                        item(key = petGroupKey) {
+                            FilledTonalButton(onClick = { expanded = if (open) expanded - petGroupKey else expanded + petGroupKey },
+                                modifier = Modifier.fillMaxWidth().testTag("petWidgetGroup")) {
+                                Text(petGroup, Modifier.weight(1f))
+                                Text(if (open) "⌃" else "⌄")
+                            }
+                        }
+                        if (open) items(petEntries, key = { (kind, _) -> kind.provider }) { (kind, title) ->
+                            Column(Modifier.fillMaxWidth().testTag("petWidgetOption:${kind.key}")) {
+                                TextButton(onClick = { onAddPet(kind, title) }, modifier = Modifier.testTag("addPetWidget:${kind.key}")) {
+                                    Text("$title · ${kind.columns}×${kind.rows}")
+                                }
+                                Box(Modifier.fillMaxWidth(kind.columns / 4f).height(kind.preferredHeight(kind.rows))) {
+                                    PetCareWidget(kind, model = null)
+                                }
+                            }
+                        }
+                    }
                     groups.forEach { (packageName, widgets) ->
                         val open = query.isNotBlank() || packageName in expanded
                         item(key = "app:$packageName", contentType = "application") {

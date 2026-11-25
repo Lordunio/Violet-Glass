@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -14,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.*
@@ -101,8 +99,7 @@ fun GlassSurface(
     target: GlassTarget,
     modifier: Modifier = Modifier,
     backdrop: GlassBackdrop? = LocalGlassBackdrop.current,
-    plainColor: Color = MaterialTheme.colorScheme.surfaceContainer,
-    compact: Boolean = false,
+    proportionalCorners: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val settings = LocalLauncherPreferences.current.glass
@@ -110,17 +107,15 @@ fun GlassSurface(
     val active = policy.enabled && target !in settings.disabledTargets
     val blur = if (active) policy.blurDp else 0f
     val corner = if (active) settings.corners else 26
-    val shape = RoundedCornerShape((if (compact) minOf(corner, 16) else corner).dp)
+    // Folder tiles use the same fraction of their side at every size.
+    val shape = if (proportionalCorners) RoundedCornerShape(percent = corner.coerceIn(0, 48) / 2)
+        else RoundedCornerShape(corner.dp)
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
     val progress by animateFloatAsState(if (entered) 1f else 0f, tween(if (active) policy.durationMillis else 0), label = "glassEntrance")
     val colors = MaterialTheme.colorScheme
     val dark = colors.background.luminance() < .5f
-    val violet = when {
-        compact -> Color(0xFF8F63C5)
-        dark -> Color(0xFF4C3071)
-        else -> Color(0xFFE2CCFA)
-    }
+    val violet = if (dark) Color(0xFF4C3071) else Color(0xFFE2CCFA)
     val glassTint = if (target == GlassTarget.SEARCH) lerp(violet, colors.onSurface, .09f) else violet
     val density = LocalDensity.current
     val radius = with(density) { blur.dp.toPx() }
@@ -134,17 +129,11 @@ fun GlassSurface(
         target == GlassTarget.SEARCH -> .82f + .18f * opacity
         else -> opacity
     }
-    val flatSurface = when (target) {
-        GlassTarget.FOLDERS, GlassTarget.DRAWER, GlassTarget.SEARCH -> true
-        else -> false
-    }
-    val reflection = policy.reflection * if (compact) tintAlpha else 1f
+    val reflection = policy.reflection
     Box(modifier.semantics { this[GlassActiveKey] = active; this[GlassBlurKey] = blur; this[GlassModeKey] = policy.mode.name; this[GlassTargetKey] = target.name }
-        .then(if (active && !compact && policy.durationMillis > 0) Modifier.graphicsLayer {
+        .then(if (active && policy.durationMillis > 0) Modifier.graphicsLayer {
             alpha = progress; scaleX = .985f + .015f * progress; scaleY = scaleX
         } else Modifier)
-        .then(if (active && !compact && !flatSurface && policy.mode != GlassMode.LITE) Modifier.shadow(10.dp, shape, clip = false,
-            ambientColor = Color(0xFF442073), spotColor = Color(0xFF442073)) else Modifier)
         .clip(shape).then(if (effect != null) Modifier.onGloballyPositioned { position = it.localToScreen(Offset.Zero) } else Modifier)) {
         if (effect != null && backdrop != null) {
             Box(Modifier.matchParentSize().graphicsLayer { renderEffect = effect; compositingStrategy = CompositingStrategy.Offscreen }
@@ -155,14 +144,11 @@ fun GlassSurface(
                     }
                 })
         }
-        Box(Modifier.matchParentSize().background((if (active) glassTint else plainColor).copy(alpha = tintAlpha)))
+        Box(Modifier.matchParentSize().background((if (active) glassTint else colors.surfaceContainer).copy(alpha = tintAlpha)))
         if (active && reflection > 0) {
             Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(
                 Color.White.copy(alpha = .26f * reflection), Color(0xFFBF91FF).copy(alpha = .08f * reflection),
-                Color.Transparent, Color.White.copy(alpha = .08f * reflection))))
-                .then(if (compact || flatSurface) Modifier else Modifier.border(1.dp, Brush.linearGradient(listOf(
-                    Color.White.copy(alpha = .48f * reflection), colors.primary.copy(alpha = .12f),
-                    Color.White.copy(alpha = .12f * reflection))), shape)))
+                Color.Transparent, Color.White.copy(alpha = .08f * reflection)))))
         }
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) { content() }
     }

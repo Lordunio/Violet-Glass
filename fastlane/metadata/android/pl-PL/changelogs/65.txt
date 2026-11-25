@@ -1,0 +1,1 @@
+Wybierz polski lub angielski w ustawieniach launchera. Energia zwierzaka spada też podczas korzystania z innych aplikacji, a po wygaszeniu ekranu się regeneruje. Dodano skalowalne widżety opieki i ujednolicono wygląd Liquid Glass.

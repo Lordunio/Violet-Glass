@@ -1,5 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="pl">
     <string name="app_name">Violet Glass</string>
+    <string name="language_title">Język aplikacji</string>
+    <string name="language_polish">Polski</string>
+    <string name="language_english">English</string>
+    <string name="pet_photo_error">Nie udało się wczytać zdjęcia. Wybierz je ponownie.</string>
     <string name="pet_settings">Zwierzak</string>
     <string name="pet_game_panel">Panel gry po prawej</string>
     <string name="pet_game_title">Łowca muszek</string>
@@ -244,13 +248,13 @@
     <string name="glass_reflections">Intensywność refleksów (%)</string>
     <string name="glass_animation">Intensywność animacji (%)</string>
     <string name="glass_corners">Zaokrąglenie narożników (dp)</string>
-    <string name="glass_readability">Tekst i ikony pozostają ostre. Przy dużej przezroczystości czytelność zależy od tła. Lite i brak obsługi rozmycia korzystają z pełnego tła dla czytelności.</string>
+    <string name="glass_readability">Tekst i ikony pozostają ostre. Przy dużej przezroczystości czytelność zależy od tła.</string>
     <string name="glass_disabled_status">Glass wyłączony</string>
     <string name="glass_active_mode">Aktywny: %1$s</string>
     <string name="glass_limit_memory">Ograniczono efekty: urządzenie z małą ilością pamięci.</string>
     <string name="glass_limit_battery">Ograniczono efekty: systemowe oszczędzanie energii.</string>
     <string name="glass_limit_heat">Ograniczono efekty: podwyższona temperatura urządzenia.</string>
-    <string name="glass_limit_hardware">Rozmycie jest niedostępne. Używane jest czytelne, pełne tło.</string>
+    <string name="glass_limit_hardware">Urządzenie nie udostępnia sprzętowego rozmycia dla Liquid Glass.</string>
     <string name="glass_ultra_hint">Najsilniejsze rozmycie tła, pełne refleksy i płynne przejścia.</string>
     <string name="glass_classic_hint">Mniejszy promień rozmycia, subtelniejsze refleksy i krótsze przejścia.</string>
     <string name="glass_lite_hint">Bez rozmycia, refleksów i animacji Glass. Proste, pełne powierzchnie.</string>
@@ -347,6 +351,26 @@
     <string name="glass_sample_short">Mapy</string>
     <string name="glass_sample_long">Pamięć\ntelefonu</string>
     <string name="preview_glass_disabled">Liquid Glass dla szuflady jest wyłączony.</string>
+    <string name="pet_widget_group">Opieka nad zwierzakiem</string>
+    <string name="pet_widget_quick">Szybka opieka</string>
+    <string name="pet_widget_card">Karta zwierzaka</string>
+    <string name="pet_widget_room">Domek zwierzaka</string>
+    <string name="pet_widget_fullness">Sytość</string>
+    <string name="pet_widget_energy">Energia</string>
+    <string name="pet_widget_cleanliness">Czystość</string>
+    <string name="pet_widget_feed">Nakarm</string>
+    <string name="pet_widget_clean">Posprzątaj</string>
+    <string name="pet_widget_pat">Pogłaszcz</string>
+    <string name="pet_widget_play">Pobaw się</string>
+    <string name="pet_widget_rest">Ustaw domek jako miejsce odpoczynku</string>
+    <string name="pet_widget_rest_set">Domek to miejsce odpoczynku</string>
+    <string name="glass_pet_widgets">Widżety zwierzaka</string>
+    <string name="glass_blur_system">Android wyświetla tapetę systemową za launcherem, więc suwak nie rozmyje jej za dockiem i folderami. Wybierz w launcherze zdjęcie lub tapetę z sekcji „Tapeta i efekty”.</string>
+    <string name="glass_blur_photo">Wybierz zdjęcie do rozmycia</string>
+    <string name="glass_blur_lite">Rozmycie jest wyłączone w trybie Lite. Sprawdź aktywny tryb w ustawieniach „Wydajność”.</string>
+    <string name="glass_blur_available">Rozmywa tapetę launchera pod szkłem. Najlepiej widać je na tle wyraźnych detali i przy wyższej przezroczystości.</string>
+    <string name="glass_reflections_explanation">Rozjaśnia delikatne smugi światła na szkle. W trybie Lite refleksy są wyłączone.</string>
+    <string name="glass_animation_explanation">Ustala czas pojawiania się szkła, np. po otwarciu folderu lub szuflady. Wyższa wartość wydłuża przejście. Tryb Lite i wyłączone animacje systemowe pomijają ten efekt.</string>
 </resources>
 
 

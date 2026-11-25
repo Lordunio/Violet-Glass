@@ -418,6 +418,135 @@ class PetUiTest {
         compose.onNodeWithTag("appSearch").assertIsDisplayed()
         assertEquals(saved, model.workspace.value.layout)
     }
+    @Test fun cardStatsAdvanceWithoutAnyAnimationLoop() {
+        runBlocking {
+            repository.update { it.copy(enabled = false, wallpaperEnabled = false, sleepAt = 0, wakeAt = 0) }
+            val card = pl.violetglass.launcher.ui.PetWidgetKind.CARD
+            model.layoutRepository.edit { LayoutEngine.addBuiltInWidget(it, card.provider, "Karta testowa", 3, 2, 0) }
+        }
+        compose.waitUntil(10000) { model.workspace.value.layout!!.items.any { it.title == "Karta testowa" } }
+        compose.onNodeWithTag("petCare:card").assertIsDisplayed()
+        compose.runOnIdle {
+            pet.engine.restore(PetStats(90f, 80f, 90f, System.currentTimeMillis() - 180_000L, fullness = 90f))
+        }
+        compose.waitUntil(8000) {
+            val stats = pet.ui.value.stats
+            stats.energy in 86f..87.01f && stats.fullness in 87f..88.01f && stats.cleanliness in 88f..88.51f
+        }
+        assertFalse(pet.running)
+        compose.onNodeWithTag("petMeter:energy").assert(hasContentDescription("Energia 87%"))
+    }
+
+    @Test fun energyFallsWithScreenOnInAnotherAppAndRecoversWithScreenOff() {
+        runBlocking { repository.update { it.copy(sleepAt = 0, wakeAt = 0) } }
+        compose.waitUntil(8000) { pet.settings.value.sleepAt == 0 && pet.settings.value.wakeAt == 0 }
+        val launcher = compose.activity
+        val power = launcher.getSystemService(android.os.PowerManager::class.java)
+        fun awaitEnergy(expected: ClosedFloatingPointRange<Float>, phase: String) {
+            val result = runBlocking { withTimeoutOrNull(12_000) { pet.ui.first { it.stats.energy in expected } } }
+            assertNotNull("$phase: expected $expected, measured ${pet.ui.value.stats.energy}", result)
+        }
+        try {
+            shell("am start -W -a android.settings.SETTINGS")
+            instrumentation.runOnMainSync {
+                assertFalse(launcher.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+                val now = System.currentTimeMillis()
+                pet.engine.restore(PetStats(90f, 80f, 90f, now - 180_000L, fullness = 90f))
+            }
+            shell("input keyevent KEYCODE_SLEEP")
+            awaitEnergy(86f..87.01f, "Screen on with Android Settings in front")
+            assertFalse(power.isInteractive)
+            // Let Android finish blanking the display before sending the opposite key event.
+            Thread.sleep(1500)
+            instrumentation.runOnMainSync {
+                val now = System.currentTimeMillis()
+                pet.engine.restore(PetStats(87f, 80f, 90f, now - 180_000L, fullness = 90f))
+            }
+            shell("input keyevent KEYCODE_WAKEUP")
+            awaitEnergy(87.39f..87.5f, "Screen off")
+            assertFalse(pet.running)
+        } finally {
+            shell("input keyevent KEYCODE_WAKEUP")
+            shell("wm dismiss-keyguard")
+            shell("input keyevent KEYCODE_BACK")
+        }
+    }
+
+    @Test fun launcherSettingsSwitchBetweenPolishAndEnglish() {
+        compose.openDesktopOptions()
+        compose.onNodeWithTag("desktopSettings").performClick()
+        compose.onNodeWithTag("section:LANGUAGE").performClick()
+        compose.onNodeWithText("Język aplikacji").assertIsDisplayed()
+        try {
+            compose.onNodeWithTag("language:en").performClick()
+            compose.waitUntil(8000) { compose.onAllNodesWithText("App language").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("settingsBack").performClick()
+            compose.onNodeWithText("Launcher settings").assertIsDisplayed()
+            compose.onNodeWithTag("section:LANGUAGE").performClick()
+            compose.onNodeWithTag("language:pl").performClick()
+            compose.waitUntil(8000) { compose.onAllNodesWithText("Język aplikacji").fetchSemanticsNodes().isNotEmpty() }
+        } finally {
+            compose.activityRule.scenario.onActivity { it.changeLauncherLanguage(pl.violetglass.launcher.LauncherLanguage.POLISH) }
+        }
+    }
+
+    @Test fun careWidgetsShareStatsAndRoomCanBecomeFavorite() {
+        compose.runOnIdle {
+            pet.engine.restore(pet.ui.value.stats.copy(fullness = 20f, cleanliness = 10f, happiness = 50f))
+            pet.refreshRest()
+        }
+        for (kind in listOf("quick", "card", "room")) {
+            compose.openDesktopOptions()
+            compose.onNodeWithTag("desktopWidgets").performClick()
+            compose.onNodeWithTag("petWidgetGroup").performClick()
+            compose.onNodeWithTag("widgetProviders").performScrollToNode(hasTestTag("addPetWidget:$kind"))
+            compose.onNodeWithTag("addPetWidget:$kind").performClick()
+            compose.waitUntil(10000) { model.workspace.value.layout!!.items.any { it.provider?.endsWith(".pet.$kind") == true } }
+            compose.onNodeWithTag("petCare:$kind").assertIsDisplayed()
+                .assert(SemanticsMatcher.expectValue(pl.violetglass.launcher.ui.GlassActiveKey, true))
+        }
+        shell("screencap -p /sdcard/violet-pet-widgets-027.png")
+        compose.openDesktopOptions()
+        compose.onNodeWithTag("desktopSettings").performClick()
+        compose.onNodeWithTag("section:GLASS").performScrollTo().performClick()
+        compose.onNodeWithTag("glassTarget:PET_WIDGETS").performScrollTo().performClick()
+        compose.waitUntil(5000) { model.preferences.value.glass.disabledTargets == setOf(GlassTarget.PET_WIDGETS) }
+        compose.onNodeWithTag("closePersonalization").performClick()
+        for (kind in listOf("quick", "card", "room")) {
+            compose.onNodeWithTag("petCare:$kind")
+                .assert(SemanticsMatcher.expectValue(pl.violetglass.launcher.ui.GlassActiveKey, false))
+        }
+        fun action(kind: String, label: Int) = compose.onNode(
+            hasContentDescription(compose.activity.getString(label)) and hasAnyAncestor(hasTestTag("petCare:$kind")))
+        action("quick", pl.violetglass.launcher.R.string.pet_widget_feed).performClick()
+        assertTrue(pet.ui.value.stats.fullness > 50f)
+        assertEquals(PetCareAction.FEED, pet.careEvents.value?.action)
+        compose.onNodeWithTag("petMeter:fullness").assert(hasContentDescription("Sytość ${kotlin.math.round(pet.ui.value.stats.fullness).toInt()}%"))
+        action("card", pl.violetglass.launcher.R.string.pet_widget_clean).performClick()
+        assertTrue(pet.ui.value.stats.cleanliness > 99f)
+        assertEquals(PetCareAction.CLEAN, pet.careEvents.value?.action)
+        action("room", pl.violetglass.launcher.R.string.pet_widget_play).performClick()
+        assertTrue(pet.ui.value.stats.happiness > 50f)
+        assertEquals(PetCareAction.PLAY, pet.careEvents.value?.action)
+        action("room", pl.violetglass.launcher.R.string.pet_widget_rest).performClick()
+        val room = model.workspace.value.layout!!.items.single { it.provider?.endsWith(".pet.room") == true }
+        compose.waitUntil(5000) { pet.settings.value.restPlace == petRestItem(room.id) }
+        val card = model.workspace.value.layout!!.items.single { it.provider?.endsWith(".pet.card") == true }
+        val oldHeight = compose.onNodeWithTag("petCare:card").fetchSemanticsNode().boundsInRoot.height
+        compose.onNodeWithTag("widget:${card.id}").performSemanticsAction(SemanticsActions.OnLongClick) { it() }
+        compose.onNodeWithTag("resizeWidget").assertIsEnabled().performClick()
+        compose.onNodeWithTag("widgetWidth-plus").performClick()
+        compose.onNodeWithTag("widgetHeight-minus").performClick()
+        compose.onNodeWithTag("saveWidgetSize").performClick()
+        compose.waitUntil(5000) { model.workspace.value.layout!!.items.any { it.id == card.id && it.spanX == 4 && it.spanY == 1 } }
+        val newHeight = compose.onNodeWithTag("petCare:card").fetchSemanticsNode().boundsInRoot.height
+        assertTrue("A one-row card should be visibly shorter", newHeight < oldHeight)
+        compose.onNodeWithTag("petMeter:fullness").assertIsDisplayed()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("petCare:room").assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(pl.violetglass.launcher.ui.GlassActiveKey, false))
+    }
+
     @Test fun petMovesOnScreenWhilePhoneCharges() {
         enable()
         runBlocking { repository.update { it.copy(sleepAt = 0, wakeAt = 0, motion = PetMotion.FAST_HOPS) } }
@@ -809,9 +938,11 @@ class PetUiTest {
         assertStatusBars(true)
     }
     @Test fun selectedPhotoLoadsThroughContentResolverAndSettingsSwitchBothModes() {
-        enable(PetBackgroundMode.PHOTO_PARALLAX)
-        compose.runOnUiThread { pet.choosePhoto(Uri.parse("content://pl.violetglass.launcher.test.petphoto/photo.png")) }
-        framesUntil { pet.photo.value != null }
+        compose.mainClock.autoAdvance = false
+        runBlocking { repository.update { it.copy(enabled = true) } }
+        compose.runOnUiThread { pet.choosePhoto(Uri.parse("content://pl.violetglass.launcher.test.petphoto/photo.png"), enableWallpaper = true) }
+        framesUntil { pet.photo.value != null && pet.settings.value.wallpaperEnabled && pet.running }
+        assertEquals(PetBackgroundMode.PHOTO_PARALLAX, pet.settings.value.background)
         assertTrue(pet.photo.value!!.width <= 2048 && pet.photo.value!!.height <= 2048)
         shell("screencap -p /sdcard/violet-pet-photo.png")
         compose.openDesktopOptions()

@@ -31,7 +31,7 @@ import pl.violetglass.launcher.workspace.*
 val LocalWidgetController = staticCompositionLocalOf<WidgetController?> { null }
 
 @Composable
-fun HostedWidget(item: LayoutItem, registry: DragRegistry, revision: Long, onMenu: (ItemPayload) -> Unit, modifier: Modifier) {
+fun HostedWidget(item: LayoutItem, registry: DragRegistry, revision: Long, onMenu: (ItemPayload) -> Unit, modifier: Modifier, pet: pl.violetglass.launcher.pet.PetViewModel? = null) {
     val controller = LocalWidgetController.current
     val info = remember(controller, item.widgetId, revision) { runCatching { item.widgetId?.let { controller?.manager?.getAppWidgetInfo(it) } }.getOrNull() }
     val payload = ItemPayload(item.id, title = item.title)
@@ -40,7 +40,10 @@ fun HostedWidget(item: LayoutItem, registry: DragRegistry, revision: Long, onMen
     var size by remember(item.widgetId) { mutableStateOf(SizeF(0f, 0f)) }
     Box(modifier.then(Modifier.sourceBounds(registry, "item:${item.id}", payload))
         .testTag("widget:${item.id}").semantics { onLongClick(label) { onMenu(payload); true } }) {
-        if (controller != null && info != null) {
+        val builtIn = PetWidgetKind.fromProvider(item.provider)
+        if (builtIn != null && item.widgetId == null) {
+            PetCareWidget(builtIn, pet, item.id)
+        } else if (controller != null && info != null) {
             key(item.widgetId, info.provider) {
                 AndroidView(factory = { context -> controller.host.createView(context, item.widgetId!!, info) },
                     modifier = Modifier.fillMaxSize().onSizeChanged { pixels ->
@@ -65,15 +68,16 @@ fun HostedWidget(item: LayoutItem, registry: DragRegistry, revision: Long, onMen
 fun WidgetMenu(item: LayoutItem, locked: Boolean, onDismiss: () -> Unit, onMove: () -> Unit, onResize: () -> Unit, onRemove: () -> Unit) {
     val controller = LocalWidgetController.current
     val info = remember(item.widgetId) { item.widgetId?.let { controller?.manager?.getAppWidgetInfo(it) } }
+    val builtIn = PetWidgetKind.fromProvider(item.provider)
     GlassAlertDialog(onDismissRequest = onDismiss, title = { Text(item.title) }, text = {
         Column {
             Text(stringResource(R.string.widget_span, item.spanX, item.spanY))
             if (locked) Text(stringResource(R.string.layout_locked), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { onMove(); onDismiss() }, enabled = !locked, modifier = Modifier.testTag("moveWidget")) { Text(stringResource(R.string.move_item)) }
-            TextButton(onClick = { onResize(); onDismiss() }, enabled = !locked && info != null && info.resizeMode != AppWidgetProviderInfo.RESIZE_NONE, modifier = Modifier.testTag("resizeWidget")) { Text(stringResource(R.string.widget_resize)) }
+            TextButton(onClick = { onResize(); onDismiss() }, enabled = !locked && (builtIn != null || info != null && info.resizeMode != AppWidgetProviderInfo.RESIZE_NONE), modifier = Modifier.testTag("resizeWidget")) { Text(stringResource(R.string.widget_resize)) }
             if (info?.configure != null && info.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_RECONFIGURABLE != 0)
                 TextButton(onClick = { controller?.configure(item); onDismiss() }) { Text(stringResource(R.string.widget_configure)) }
-            if (info == null) TextButton(onClick = { controller?.rebind(item); onDismiss() }) { Text(stringResource(R.string.widget_rebind)) }
+            if (info == null && builtIn == null) TextButton(onClick = { controller?.rebind(item); onDismiss() }) { Text(stringResource(R.string.widget_rebind)) }
             TextButton(onClick = { onRemove(); onDismiss() }, enabled = !locked, modifier = Modifier.testTag("removeWidget")) { Text(stringResource(R.string.widget_remove)) }
         }
     }, confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } })
@@ -91,13 +95,17 @@ fun WidgetResizeDialog(item: LayoutItem, config: LayoutConfig, onDismiss: () -> 
     val minY = if (vertical) kotlin.math.ceil((info!!.minResizeHeight / density + 16f) / 84f).toInt().coerceIn(1, config.rows) else item.spanY
     val maxX = if (horizontal && info!!.maxResizeWidth > 0) kotlin.math.floor(info.maxResizeWidth / density / cellWidth).toInt().coerceIn(minX, config.columns) else if (horizontal) config.columns else item.spanX
     val maxY = if (vertical && info!!.maxResizeHeight > 0) kotlin.math.floor(info.maxResizeHeight / density / 84f).toInt().coerceIn(minY, config.rows) else if (vertical) config.rows else item.spanY
+    val builtIn = PetWidgetKind.fromProvider(item.provider)
+    val widthRange = if (builtIn != null) minOf(builtIn.minimumColumns, item.spanX)..config.columns
+        else minOf(minX, item.spanX)..maxOf(maxX, item.spanX)
+    val heightRange = if (builtIn != null) 1..config.rows else minOf(minY, item.spanY)..maxOf(maxY, item.spanY)
     var x by remember { mutableIntStateOf(item.spanX) }
     var y by remember { mutableIntStateOf(item.spanY) }
     GlassAlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.widget_resize)) }, text = {
         Column {
             Text(stringResource(R.string.widget_resize_hint), style = MaterialTheme.typography.bodySmall)
-            NumberRow(stringResource(R.string.widget_width), x, minOf(minX, item.spanX)..maxOf(maxX, item.spanX), "widgetWidth") { x = it }
-            NumberRow(stringResource(R.string.widget_height), y, minOf(minY, item.spanY)..maxOf(maxY, item.spanY), "widgetHeight") { y = it }
+            NumberRow(stringResource(R.string.widget_width), x, widthRange, "widgetWidth") { x = it }
+            NumberRow(stringResource(R.string.widget_height), y, heightRange, "widgetHeight") { y = it }
         }
     }, confirmButton = { TextButton(onClick = { onSave(x, y); onDismiss() }, modifier = Modifier.testTag("saveWidgetSize")) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } })

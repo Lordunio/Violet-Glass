@@ -1,0 +1,1 @@
+Choose Polish or English in launcher settings. Pet energy now falls while you use other apps with the screen on and recovers when the screen is off. Added resizable pet care widgets with feed, clean and play actions. Improved Liquid Glass consistency across the launcher.

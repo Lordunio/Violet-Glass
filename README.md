@@ -1,6 +1,6 @@
 # Violet Glass Launcher
 
-Android launcher with configurable home screens, a glass theme, app categories, widgets and an optional animated desktop companion. The interface is primarily in Polish.
+Android launcher with configurable home screens, a glass theme, app categories, widgets and an optional animated desktop companion. Choose Polish or English in Launcher settings → App language.
 
 - Customize the app grid, dock, folders, gestures and icon packs.
 - Open the app drawer with a swipe up and close it with a swipe down from the top of the list.

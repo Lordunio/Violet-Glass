@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -149,7 +150,7 @@ fun InteractiveWallpaperLayer(model: PetViewModel, settings: PetSettings, modifi
 fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracker, settings: PetSettings,
     active: Boolean, modifier: Modifier = Modifier, sceneLeftFraction: Float = 0f, interactive: Boolean = true,
     sceneRightFraction: Float = 1f, hopOrigin: Offset? = null, hopPageDelta: Float = 0f, pagerMoving: Boolean = false,
-    desktopPage: Int? = 0, restPage: Int? = null, desktopPosition: Float = 0f) {
+    desktopPage: Int? = 0, restPage: Int? = null, desktopPosition: Float = 0f, trackCareStats: Boolean = settings.enabled) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val activity = LocalActivity.current
     val context = LocalContext.current
@@ -162,6 +163,29 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
     val moving by rememberUpdatedState(pagerMoving)
     val currentDesktop by rememberUpdatedState(desktopPage)
     val favoriteDesktop by rememberUpdatedState(restPage)
+    DisposableEffect(lifecycle, model) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> model.setForeground(true)
+                Lifecycle.Event.ON_PAUSE -> model.setForeground(false)
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            model.setForeground(false)
+        }
+    }
+    LaunchedEffect(lifecycle, model, trackCareStats) {
+        if (trackCareStats) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            model.ui.first { it.ready }
+            while (isActive) {
+                model.refreshStats()
+                delay(1000)
+            }
+        }
+    }
     LaunchedEffect(tracker, model) {
         snapshotFlow {
             currentDesktop?.takeUnless { moving }?.let { Triple(tracker.surfaces, it, favoriteDesktop) }
@@ -218,6 +242,8 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
     }
     if(!active || !settings.sceneEnabled) return
     val frame = model.ui.collectAsStateWithLifecycle()
+    val care by model.careEvents.collectAsStateWithLifecycle()
+    val careProgress = rememberPetCareProgress(care)
     val haptic = LocalHapticFeedback.current
     val shown by remember(frame) { derivedStateOf { frame.value.visible } }
     Box(modifier.fillMaxSize().onSizeChanged { model.viewport(it.width, it.height, density.density, bottom) }) {
@@ -275,8 +301,8 @@ fun InteractiveTamagotchiOverlay(model: PetViewModel, tracker: GridSurfaceTracke
             }
             if(settings.enabled) {
                 val sleepingPage = state.sleepingDesktop
-                if (sleepingPage != null) translate(left = size.width * (sleepingPage - desktopPosition)) { drawCharacter(state) }
-                else drawCharacter(hopOrigin?.let { state.acrossDesktop(it, hopPageDelta, size.width) } ?: state)
+                if (sleepingPage != null) translate(left = size.width * (sleepingPage - desktopPosition)) { drawPetCareCharacter(state, care, careProgress.value) }
+                else drawPetCareCharacter(hopOrigin?.let { state.acrossDesktop(it, hopPageDelta, size.width) } ?: state, care, careProgress.value)
             }
             }
         }
@@ -691,7 +717,7 @@ private fun PetMessageAppPicker(model: PetViewModel, onDismiss: () -> Unit) {
 fun WallpaperEffectControls(model: PetViewModel) {
     val settings by model.settings.collectAsStateWithLifecycle()
     val error by model.error.collectAsStateWithLifecycle()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let(model::choosePhoto) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { it?.let { uri -> model.choosePhoto(uri) } }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(stringResource(R.string.pet_wallpaper_enable))
         Switch(settings.wallpaperEnabled, { value -> model.configure { it.copy(wallpaperEnabled = value) } }, Modifier.testTag("wallpaperEffectsEnabled"))
@@ -742,5 +768,5 @@ fun WallpaperEffectControls(model: PetViewModel) {
             PetWeather.SNOW -> R.string.pet_snow; PetWeather.RAIN -> R.string.pet_rain; PetWeather.FIREFLIES -> R.string.pet_fireflies
             PetWeather.SPARKLES -> R.string.pet_sparkles }))
     } }
-    if(error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
+    error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
 }

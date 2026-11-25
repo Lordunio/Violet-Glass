@@ -18,12 +18,40 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import pl.violetglass.launcher.settings.*
+import pl.violetglass.launcher.pet.PetCareAction
+import pl.violetglass.launcher.pet.PetCareEvent
+import pl.violetglass.launcher.pet.drawPetCareCharacter
 import pl.violetglass.launcher.ui.*
 
 /** Verifies pixels of real GPU blur, rather than only checking a settings label. */
 @RunWith(AndroidJUnit4::class)
 class GlassRenderTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun petCareDrawsDistinctReactionsEvenWithPendingNotifications() {
+        var care by mutableStateOf<pl.violetglass.launcher.pet.PetCareEvent?>(null)
+        compose.setContent {
+            Canvas(Modifier.size(100.dp).background(Color.Black).testTag("careReaction")) {
+                val state = pl.violetglass.launcher.pet.PetUiState(ready = true, visible = true,
+                    mode = pl.violetglass.launcher.pet.PetMode.COURIER, notificationCount = 1,
+                    sizePx = 44.dp.toPx(), feet = Offset(center.x, size.height * .8f))
+                drawPetCareCharacter(state, care, .35f)
+            }
+        }
+        val colors = mapOf(PetCareAction.FEED to Color(0xFFFFD082), PetCareAction.CLEAN to Color(0xFF9DEFFF),
+            PetCareAction.PAT to Color(0xFFFF9EC8), PetCareAction.PLAY to Color(0xFFD1B9FF), PetCareAction.REST to Color(0xFFBFE998))
+        fun contains(color: Color): Boolean {
+            val pixels = compose.onNodeWithTag("careReaction").captureToImage().toPixelMap()
+            return (0 until pixels.height).any { y -> (0 until pixels.width).any { x -> pixels[x, y] == color } }
+        }
+        for ((action, tint) in colors) {
+            assertFalse(contains(tint))
+            compose.runOnIdle { care = PetCareEvent(action, 0L) }
+            assertTrue("Missing visible effect for $action", contains(tint))
+        }
+        compose.runOnIdle { care = null }
+        assertTrue("Notification envelope returns", contains(Color.White))
+    }
 
     @Test fun appNameHasVisibleGlyphsOnBlackWhiteAndViolet() {
         val backgrounds = listOf(Color.Black, Color.White, Color(0xFF675577))
@@ -83,7 +111,81 @@ class GlassRenderTest {
         }
     }
 
-    @Test fun drawerAndFolderUseFullTransparencyWhileSearchKeepsContrast() {
+    @Test fun petWidgetPreviewsStayDarkInLightLauncherWithGlassOnOrOff() {
+        var enabled by mutableStateOf(true)
+        compose.setContent {
+            val glass = GlassSettings(enabled = enabled, mode = GlassMode.LITE, transparency = 100)
+            CompositionLocalProvider(LocalLauncherPreferences provides LauncherPreferences(glass = glass),
+                LocalGlassPolicy provides resolveGlass(glass, GlassEnvironment())) {
+                VioletTheme(ThemeMode.LIGHT) {
+                    Column(Modifier.background(Color.White)) {
+                        Box(Modifier.size(150.dp, 56.dp)) { PetCareWidget(PetWidgetKind.QUICK, model = null) }
+                        Box(Modifier.size(180.dp, 118.dp)) { PetCareWidget(PetWidgetKind.CARD, model = null) }
+                    }
+                }
+            }
+        }
+        for (glassOn in listOf(true, false)) {
+            compose.runOnIdle { enabled = glassOn }
+            for (kind in listOf("quick", "card")) {
+                val pixels = compose.onNodeWithTag("petCare:$kind").captureToImage().toPixelMap()
+                val violet = pixels[pixels.width / 2, pixels.height / 50]
+                assertTrue("Preview $kind must have dark violet glass when enabled=$glassOn", violet.luminance() < .22f && violet.blue > violet.red)
+            }
+        }
+    }
+
+    @Test fun petMeterShowsOnlyTheActualFillAtZeroAndHalf() {
+        var value by mutableFloatStateOf(1f)
+        compose.setContent {
+            VioletTheme(ThemeMode.DARK) {
+                PetProgressTrack(value, Modifier.size(128.dp, 6.dp).background(Color.Black).testTag("petTrack"))
+            }
+        }
+        fun samples(): Pair<Color, Color> {
+            val pixels = compose.onNodeWithTag("petTrack").captureToImage().toPixelMap()
+            return pixels[pixels.width / 4, pixels.height / 2] to pixels[pixels.width * 3 / 4, pixels.height / 2]
+        }
+        val full = samples().first
+        compose.runOnIdle { value = .5f }
+        val half = samples()
+        assertEquals(full, half.first)
+        assertNotEquals(full, half.second)
+        compose.runOnIdle { value = 0f }
+        val empty = samples()
+        assertEquals(half.second, empty.first)
+        assertEquals(empty.first, empty.second)
+    }
+
+    @Test fun folderCornersStayProportionalAtEveryPreviewSize() {
+        var corners by mutableIntStateOf(48)
+        compose.setContent {
+            val glass = GlassSettings(mode = GlassMode.LITE, corners = corners, transparency = 0)
+            CompositionLocalProvider(LocalLauncherPreferences provides LauncherPreferences(glass = glass),
+                LocalGlassPolicy provides resolveGlass(glass, GlassEnvironment())) {
+                VioletTheme(ThemeMode.LIGHT) {
+                    Row(Modifier.background(Color.Black)) {
+                        for (edge in listOf(48, 96)) {
+                            GlassSurface(if (edge == 48) GlassTarget.FOLDERS else GlassTarget.DOCK, Modifier.size(edge.dp).testTag("folder$edge"),
+                                proportionalCorners = true) {}
+                        }
+                    }
+                }
+            }
+        }
+        for (edge in listOf(48, 96)) {
+            val pixels = compose.onNodeWithTag("folder$edge").captureToImage().toPixelMap()
+            assertEquals(Color.Black, pixels[pixels.width / 16, pixels.height / 16])
+            assertTrue("Folder must keep straight edges at maximum rounding", pixels[pixels.width / 8, pixels.height / 8].red > .7f)
+        }
+        compose.runOnIdle { corners = 0 }
+        for (edge in listOf(48, 96)) {
+            val pixels = compose.onNodeWithTag("folder$edge").captureToImage().toPixelMap()
+            assertTrue(pixels[pixels.width / 16, pixels.height / 16].red > .7f)
+        }
+    }
+
+    @Test fun dockFolderAndDrawerUseFullTransparencyWhileSearchKeepsContrast() {
         var transparency by mutableIntStateOf(0)
         compose.setContent {
             val glass = GlassSettings(mode = GlassMode.LITE, transparency = transparency)
@@ -95,19 +197,23 @@ class GlassRenderTest {
                             GlassSurface(GlassTarget.DRAWER, Modifier.weight(1f).fillMaxHeight()) {}
                             GlassSurface(GlassTarget.SEARCH, Modifier.weight(1f).fillMaxHeight()) {}
                             GlassSurface(GlassTarget.FOLDERS, Modifier.weight(1f).fillMaxHeight()) {}
+                            GlassSurface(GlassTarget.DOCK, Modifier.weight(1f).fillMaxHeight()) {}
                         }
                     }
                 }
             }
         }
         fun samples(): List<Color> = compose.onNodeWithTag("drawerFixture").captureToImage().toPixelMap().let { pixels ->
-            listOf(pixels.width / 6, pixels.width / 2, pixels.width * 5 / 6).map { pixels[it, pixels.height / 2] }
+            listOf(1, 3, 5, 7).map { pixels[pixels.width * it / 8, pixels.height / 2] }
         }
         val opaque = samples()
         assertTrue(opaque.all { it.blue > it.red && it.red > it.green })
         for (step in listOf(25, 50, 75, 100)) {
             compose.runOnIdle { transparency = step }
-            samples().zip(opaque).forEachIndexed { index, (color, start) ->
+            val current = samples()
+            assertEquals("Folder and dock should match at $step%", current[2], current[3])
+            assertEquals("Folder and drawer should match at $step%", current[2], current[0])
+            current.zip(opaque).forEachIndexed { index, (color, start) ->
                 val opacity = 1f - step / 100f
                 val ratio = if (index == 1) .82f + .18f * opacity else opacity
                 assertEquals("Blue channel at $step% transparency", start.blue * ratio, color.blue, .02f)

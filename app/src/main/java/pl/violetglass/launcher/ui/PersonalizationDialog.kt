@@ -20,15 +20,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.compose.LocalActivity
 import kotlinx.coroutines.launch
 import pl.violetglass.launcher.R
+import pl.violetglass.launcher.MainActivity
+import pl.violetglass.launcher.LauncherLanguage
 import pl.violetglass.launcher.apps.LauncherApp
 import pl.violetglass.launcher.home.LauncherViewModel
 import pl.violetglass.launcher.settings.*
 import pl.violetglass.launcher.gestures.SystemActions
 import kotlin.math.roundToInt
 
-private enum class Section { DESKTOP, ICONS, DOCK, FOLDERS, DRAWER, SCREENS, PET, WALLPAPER, GLASS, PERFORMANCE, GESTURES, WIDGETS, HA, DISCOVER, BACKUP, ABOUT }
+private enum class Section { LANGUAGE, DESKTOP, ICONS, DOCK, FOLDERS, DRAWER, SCREENS, PET, WALLPAPER, GLASS, PERFORMANCE, GESTURES, WIDGETS, HA, DISCOVER, BACKUP, ABOUT }
 @Composable
 private fun sectionLabel(section: Section) = stringResource(when(section) {
     Section.PET -> R.string.pet_settings
@@ -40,6 +43,7 @@ private fun sectionLabel(section: Section) = stringResource(when(section) {
     Section.SCREENS -> R.string.side_panels; Section.DISCOVER -> R.string.discover_title
     Section.ABOUT -> R.string.about_title
     Section.BACKUP -> R.string.backup_title
+    Section.LANGUAGE -> R.string.language_title
 })
 @Composable
 fun gestureLabel(gesture: DesktopGesture) = stringResource(when(gesture) {
@@ -80,10 +84,18 @@ fun PersonalizationDialog(model: LauncherViewModel, apps: List<LauncherApp>, sys
                     Text(section?.let { sectionLabel(it) } ?: stringResource(R.string.launcher_settings), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = onDismiss, modifier = Modifier.testTag("closePersonalization")) { Text(stringResource(R.string.close)) }
                 }
-                if(section != Section.BACKUP) Text(stringResource(R.string.settings_live), style = MaterialTheme.typography.bodySmall)
+                if(section != Section.BACKUP && section != Section.LANGUAGE) Text(stringResource(R.string.settings_live), style = MaterialTheme.typography.bodySmall)
                 key(section) {
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                         when(section) {
+                            Section.LANGUAGE -> {
+                                val activity = LocalActivity.current as? MainActivity
+                                LauncherLanguage.entries.forEach { language ->
+                                    RadioRow(stringResource(language.label), activity?.launcherLanguage == language, "language:${language.tag}") {
+                                        activity?.changeLauncherLanguage(language)
+                                    }
+                                }
+                            }
                             Section.PET -> pl.violetglass.launcher.pet.PetControls(androidx.lifecycle.viewmodel.compose.viewModel())
                             Section.WALLPAPER -> pl.violetglass.launcher.pet.WallpaperEffectControls(androidx.lifecycle.viewmodel.compose.viewModel())
                             null -> Section.entries.filter { pl.violetglass.launcher.BuildConfig.DISCOVER_AVAILABLE || it != Section.DISCOVER }.forEach { value ->

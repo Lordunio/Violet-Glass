@@ -191,13 +191,13 @@ class PetEngineTest {
     @Test fun pausedStatsUseElapsedTimeOnceClampAndIgnoreBackwardsClock() {
         val initial = PetStats(50f, 50f, 50f, 1000)
         val later = initial.advance(1000 + 4 * 3_600_000L)
-        assertEquals(45.2f, later.energy, .001f); assertEquals(44f, later.happiness, .001f)
-        assertEquals(46.8f, later.cleanliness, .001f)
+        assertEquals(0f, later.energy, .001f); assertEquals(44f, later.happiness, .001f)
+        assertEquals(0f, later.cleanliness, .001f)
         assertEquals(later, later.advance(later.lastUpdatedTimestamp))
         assertEquals(initial, initial.advance(0))
         val clamped = initial.advance(Long.MAX_VALUE)
         assertEquals(0f, clamped.energy, 0f); assertEquals(0f, clamped.happiness, 0f)
-        assertEquals(100f, initial.advance(1000 + 24 * 3_600_000L, plugged = true).energy, 0f)
+        assertEquals(100f, initial.advance(1000 + 24 * 3_600_000L, plugged = true, sleeping = true).energy, 0f)
     }
     @Test fun petStartsOnDockAndKeepsTheSafetyFloorAboveNavigation() {
         val engine = engine()
@@ -341,6 +341,27 @@ class PetEngineTest {
         repeat(30) { engine.tick(.02f, PetWeather.FIREFLIES, Offset.Zero, moveCharacter = false) }
         assertEquals(start, engine.state.feet)
         assertTrue(engine.state.animationSeconds > startTime)
+    }
+
+    @Test fun fullnessDecaysOfflineAndFeedingCapsItWithoutAddingEnergy() {
+        val start = PetStats(energy = 50f, lastUpdatedTimestamp = 1000, fullness = 80f)
+        assertEquals(40f, start.advance(1000 + 4 * 3_600_000L, away = true).fullness, .001f)
+        val pet = engine()
+        pet.restore(start.copy(fullness = 10f))
+        pet.feed(1000)
+        assertEquals(45f, pet.state.stats.fullness, .001f)
+        assertEquals(50f, pet.state.stats.energy, .001f)
+        repeat(5) { pet.feed(1000) }
+        assertEquals(100f, pet.state.stats.fullness, .001f)
+    }
+
+    @Test fun awakeEnergyDrainsWhilePluggedAndRecoversAwayOrWhileSleeping() {
+        val hour = 3_600_000L
+        val initial = PetStats(energy = 70f, lastUpdatedTimestamp = 1000L)
+        assertEquals(10f, initial.advance(1000L + hour).energy, .001f)
+        assertEquals(10f, initial.advance(1000L + hour, plugged = true).energy, .001f)
+        assertEquals(82f, initial.advance(1000L + hour, plugged = true, sleeping = true).energy, .001f)
+        assertEquals(78f, initial.advance(1000L + hour, away = true).energy, .001f)
     }
 
     @Test fun chargingAllowsDaytimeRoamingInEveryMotionMode() {

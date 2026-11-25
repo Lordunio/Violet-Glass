@@ -105,6 +105,12 @@ object LayoutEngine {
         return base.copy(items = base.items + placed).also(::validate)
     }
 
+    internal fun addBuiltInWidget(state: LayoutState, provider: String, title: String, spanX: Int, spanY: Int, page: Int): LayoutState {
+        val item = LayoutItem(UUID.randomUUID().toString(), title = title, container = pageContainer(page),
+            position = 0, provider = provider, spanX = spanX, spanY = spanY)
+        return state.copy(items = state.items + firstRectangle(state, item, item.container)).also(::validate)
+    }
+
     fun resizeWidget(state: LayoutState, id: String, spanX: Int, spanY: Int): LayoutState {
         val widget = state.items.find { it.id == id && it.isWidget } ?: reject()
         val next = widget.copy(spanX = spanX, spanY = spanY)

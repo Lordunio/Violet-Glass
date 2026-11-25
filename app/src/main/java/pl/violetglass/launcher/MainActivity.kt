@@ -1,6 +1,7 @@
 package pl.violetglass.launcher
 
 import android.app.role.RoleManager
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
@@ -32,8 +33,35 @@ import androidx.core.view.WindowInsetsCompat
 import pl.violetglass.launcher.ui.BackupPicker
 import pl.violetglass.launcher.ui.LocalBackupPicker
 import pl.violetglass.launcher.ui.BackupProgress
+import java.util.Locale
+
+internal enum class LauncherLanguage(val tag: String, val label: Int) {
+    POLISH("pl", R.string.language_polish),
+    ENGLISH("en", R.string.language_english),
+}
+
+private fun Context.languagePreferences() = getSharedPreferences("launcher_language", Context.MODE_PRIVATE)
 
 class MainActivity : ComponentActivity() {
+    internal val launcherLanguage: LauncherLanguage
+        get() = LauncherLanguage.entries.firstOrNull {
+            it.tag == languagePreferences().getString("language", null)
+        } ?: LauncherLanguage.POLISH
+
+    override fun attachBaseContext(newBase: Context) {
+        val tag = newBase.languagePreferences().getString("language", null) ?: LauncherLanguage.POLISH.tag
+        val configuration = Configuration(newBase.resources.configuration).apply {
+            setLocale(Locale.forLanguageTag(tag))
+        }
+        super.attachBaseContext(newBase.createConfigurationContext(configuration))
+    }
+
+    internal fun changeLauncherLanguage(language: LauncherLanguage) {
+        if (launcherLanguage == language) return
+        languagePreferences().edit().putString("language", language.tag).apply()
+        recreate()
+    }
+
     private val model: LauncherViewModel by viewModels()
     lateinit var widgets: WidgetController
         private set

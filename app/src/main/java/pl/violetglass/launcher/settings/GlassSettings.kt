@@ -1,7 +1,7 @@
 package pl.violetglass.launcher.settings
 
 enum class GlassMode { ULTRA, CLASSIC, LITE }
-enum class GlassTarget { DOCK, FOLDERS, DRAWER, SEARCH, MENUS, SETTINGS, PANELS }
+enum class GlassTarget { DOCK, FOLDERS, DRAWER, SEARCH, MENUS, SETTINGS, PANELS, PET_WIDGETS }
 data class GlassSettings(
     val enabled: Boolean = true,
     val mode: GlassMode = GlassMode.CLASSIC,

@@ -2,4 +2,4 @@ Violet Glass to launcher Androida z konfigurowalnymi pulpitami, szklanym motywem
 
 Dodaj oddzielny panel ze swoim dashboardem Home Assistant. Włącz zwierzaka, efekty tapety albo obie opcje. Zwierzak porusza się po ikonach i widgetach. Po udzieleniu dostępu do powiadomień Androida może wyświetlać kopertę dla wybranych aplikacji.
 
-Układ i ustawienia można zapisać i przywrócić z pliku kopii.
+Karm i myj zwierzaka albo baw się z nim za pomocą widżetów opieki. Układ i ustawienia można zapisać i przywrócić z pliku kopii. W ustawieniach launchera wybierzesz polski lub angielski.
