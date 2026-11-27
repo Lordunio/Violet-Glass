@@ -1,5 +1,18 @@
-Violet Glass is an Android launcher with customizable home screens, a glass theme and app categories. Arrange apps, folders and widgets, choose a grid and dock, and open the app drawer with a swipe.
+A pixel fox leaps from a folder onto a widget. One swipe opens your home dashboard. With Violet Glass, you choose what lives on your Android home screen. The launcher supports Android 12 and later and includes English and Polish.
 
-Add a dedicated panel for your own Home Assistant dashboard. Enable a desktop companion, wallpaper effects or both. The companion moves around icons and widgets and can show an envelope for notifications from selected apps when Android notification access is granted.
+A pet on your home screen
+Choose a fox, cat or robot. Your companion walks across icons, rests on a spot you choose and sleeps on a schedule. Add any of three care widgets to feed, clean, pet or play with it. The Pet Card shows fullness, energy and cleanliness. With optional notification access, the pet can carry an envelope for apps you select, and app icons can show notification badges.
 
-Feed, clean and play with your companion using pet care widgets. Export and restore your layout and preferences. Choose Polish or English in launcher settings.
+Fly Hunter
+Open the optional game panel and help your pet fend off waves of flies. Pick up shields, rapid fire and double shots. Pause or restart a round and enter a three-letter nickname to save your score on the local leaderboard.
+
+Home Assistant
+Swipe to a view of your own Home Assistant dashboard. Connect to a local address or a remote HTTPS address. The devices and controls you see come from your dashboard.
+
+Home screens and gestures
+Adjust the grid, dock and icon labels. Drag shortcuts, reorder apps inside folders or expand a folder to a 2 × 2 tile. Swipe up to search apps by name and organize them into custom categories. Browse widgets by app and resize them on the home screen. Assign actions to gestures, enable auto-rotation or lock the layout.
+
+Liquid Glass and wallpapers
+Adjust glass transparency, blur, highlights and corner radius. Choose which surfaces use the effect. Keep your wallpaper or switch to a pixel forest, neon city or cyber landscape. Add fireflies, snow, rain or sparks. Wallpaper effects and the pet can be enabled independently.
+
+Export your layout and preferences to a file and preview a backup before restoring it. Backups exclude wallpaper images, notification content and Home Assistant addresses and sessions.

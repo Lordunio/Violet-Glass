@@ -1,1 +1,1 @@
-Launcher z widgetami, gestami, kategoriami aplikacji i zwierzakiem
+Launcher ze zwierzakiem, grą zręcznościową i panelem Home Assistant

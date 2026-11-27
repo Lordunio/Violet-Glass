@@ -1,5 +1,18 @@
-Violet Glass to launcher Androida z konfigurowalnymi pulpitami, szklanym motywem i kategoriami aplikacji. Rozmieszczaj aplikacje, foldery i widgety, wybierz układ siatki i docka oraz otwieraj listę aplikacji gestem.
+Pikselowy lis przeskakuje z folderu na widżet, a jeden gest otwiera panel Twojego domu. W Violet Glass to Ty wybierasz, co pojawia się na pulpicie. Launcher działa na Androidzie 12 i nowszych. Interfejs jest dostępny po polsku i angielsku.
 
-Dodaj oddzielny panel ze swoim dashboardem Home Assistant. Włącz zwierzaka, efekty tapety albo obie opcje. Zwierzak porusza się po ikonach i widgetach. Po udzieleniu dostępu do powiadomień Androida może wyświetlać kopertę dla wybranych aplikacji.
+Zwierzak na pulpicie
+Wybierz lisa, kota lub robota. Towarzysz chodzi po ikonach, odpoczywa w wybranym miejscu i zasypia o ustalonej porze. Dodaj jeden z trzech widżetów opieki, żeby go nakarmić, posprzątać, pogłaskać albo się z nim pobawić. Karta zwierzaka pokazuje sytość, energię i czystość. Jeśli udzielisz dostępu do powiadomień, zwierzak może nosić kopertę dla wybranych aplikacji, a na ikonach mogą pojawiać się znaczniki.
 
-Karm i myj zwierzaka albo baw się z nim za pomocą widżetów opieki. Układ i ustawienia można zapisać i przywrócić z pliku kopii. W ustawieniach launchera wybierzesz polski lub angielski.
+Łowca muszek
+Włącz boczny panel gry i pomóż zwierzakowi zestrzeliwać kolejne fale muszek. Zbieraj tarczę, szybki ogień i podwójne strzały. Możesz wstrzymać rundę, zagrać od nowa i zapisać wynik pod trzyliterowym pseudonimem w lokalnym rankingu.
+
+Home Assistant
+Przesuń pulpit, żeby otworzyć wybrany widok własnego panelu Home Assistant. Podaj adres lokalny lub zdalny HTTPS. To, jakie urządzenia i karty zobaczysz, zależy od konfiguracji Twojego domu.
+
+Pulpit i gesty
+Dobierz siatkę, dock i podpisy ikon. Przeciągaj skróty, zmieniaj kolejność aplikacji w folderach lub powiększ folder do rozmiaru 2 × 2. Wysuń listę aplikacji gestem, wyszukuj po nazwie i twórz własne kategorie. Wybieraj widżety według aplikacji i zmieniaj ich rozmiar. Możesz przypisać czynności do gestów, włączyć obrót ekranu lub zablokować układ.
+
+Liquid Glass i tapety
+Ustaw przezroczystość szkła, rozmycie, refleksy i zaokrąglenia. Wybierz, które elementy mają korzystać z efektu. Zachowaj swoją tapetę albo włącz pikselowy las, neonowe miasto lub cyberkrajobraz. Dodaj świetliki, śnieg, deszcz lub iskry. Efekty tapety i zwierzaka możesz włączać osobno.
+
+Układ pulpitu i preferencje możesz wyeksportować do pliku i przywrócić z podglądem. Kopia pomija zdjęcia tapet, treść powiadomień oraz adresy i sesje Home Assistant.

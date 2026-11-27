@@ -1,1 +1,1 @@
-Custom Android launcher with widgets, gestures and a desktop companion
+Android launcher with a desktop pet, arcade game and Home Assistant panel
