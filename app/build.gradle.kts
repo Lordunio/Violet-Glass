@@ -11,8 +11,8 @@ android {
         applicationId = "pl.violetglass.launcher"
         minSdk = 31
         targetSdk = 37
-        versionCode = 65
-        versionName = "0.22.29"
+        versionCode = 66
+        versionName = "0.22.30"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")

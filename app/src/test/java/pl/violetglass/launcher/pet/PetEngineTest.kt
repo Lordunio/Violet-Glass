@@ -327,10 +327,10 @@ class PetEngineTest {
         val morning = start + 8 * 3_600_000L
         val before = PetStats(energy = 12f, lastUpdatedTimestamp = start)
         val after = before.advance(morning, away = true)
-        assertEquals(76f, after.energy, 0f)
+        assertEquals(100f, after.energy, 0f)
         assertEquals(after, after.advance(morning, away = true))
         assertEquals(100f, before.advance(morning + 8 * 3_600_000L, away = true).energy, 0f)
-        assertEquals(70f, before.copy(energy = 6f).advance(morning, away = true).energy, 0f)
+        assertFalse(after.needsRest)
     }
 
     @Test fun pagerTransitionKeepsThePetInPlaceWhileEffectsContinue() {
@@ -358,10 +358,10 @@ class PetEngineTest {
     @Test fun awakeEnergyDrainsWhilePluggedAndRecoversAwayOrWhileSleeping() {
         val hour = 3_600_000L
         val initial = PetStats(energy = 70f, lastUpdatedTimestamp = 1000L)
-        assertEquals(10f, initial.advance(1000L + hour).energy, .001f)
-        assertEquals(10f, initial.advance(1000L + hour, plugged = true).energy, .001f)
+        assertEquals(50f, initial.advance(1000L + hour).energy, .001f)
+        assertEquals(50f, initial.advance(1000L + hour, plugged = true).energy, .001f)
         assertEquals(82f, initial.advance(1000L + hour, plugged = true, sleeping = true).energy, .001f)
-        assertEquals(78f, initial.advance(1000L + hour, away = true).energy, .001f)
+        assertEquals(90f, initial.advance(1000L + hour, away = true).energy, .001f)
     }
 
     @Test fun chargingAllowsDaytimeRoamingInEveryMotionMode() {

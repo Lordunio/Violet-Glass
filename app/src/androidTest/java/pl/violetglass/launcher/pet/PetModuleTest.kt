@@ -84,7 +84,7 @@ class PetPersistenceTest {
             repository.save(PetStats(1f, 1f, 1f, 500))
             job.cancelAndJoin(); job = SupervisorJob(); repository = repo()
             assertEquals(advanced, repository.resume(3_601_000))
-            assertEquals(88f, advanced.energy, .001f)
+            assertEquals(100f, advanced.energy, .001f)
             assertEquals(config, repository.settings.first())
             assertEquals(before, PreferencesRepository(context.launcherDataStore).data.first())
         } finally { job.cancelAndJoin(); directory.deleteRecursively() }
@@ -431,10 +431,10 @@ class PetUiTest {
         }
         compose.waitUntil(8000) {
             val stats = pet.ui.value.stats
-            stats.energy in 86f..87.01f && stats.fullness in 87f..88.01f && stats.cleanliness in 88f..88.51f
+            stats.energy in 88.75f..89.01f && stats.fullness in 87f..88.01f && stats.cleanliness in 88f..88.51f
         }
         assertFalse(pet.running)
-        compose.onNodeWithTag("petMeter:energy").assert(hasContentDescription("Energia 87%"))
+        compose.onNodeWithTag("petMeter:energy").assert(hasContentDescription("Energia 89%"))
     }
 
     @Test fun energyFallsWithScreenOnInAnotherAppAndRecoversWithScreenOff() {
@@ -454,16 +454,16 @@ class PetUiTest {
                 pet.engine.restore(PetStats(90f, 80f, 90f, now - 180_000L, fullness = 90f))
             }
             shell("input keyevent KEYCODE_SLEEP")
-            awaitEnergy(86f..87.01f, "Screen on with Android Settings in front")
+            awaitEnergy(88.75f..89.01f, "Screen on with Android Settings in front")
             assertFalse(power.isInteractive)
             // Let Android finish blanking the display before sending the opposite key event.
             Thread.sleep(1500)
             instrumentation.runOnMainSync {
                 val now = System.currentTimeMillis()
-                pet.engine.restore(PetStats(87f, 80f, 90f, now - 180_000L, fullness = 90f))
+                pet.engine.restore(PetStats(89f, 80f, 90f, now - 180_000L, fullness = 90f))
             }
             shell("input keyevent KEYCODE_WAKEUP")
-            awaitEnergy(87.39f..87.5f, "Screen off")
+            awaitEnergy(89.99f..90.25f, "Screen off")
             assertFalse(pet.running)
         } finally {
             shell("input keyevent KEYCODE_WAKEUP")

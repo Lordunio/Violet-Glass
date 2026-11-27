@@ -1,0 +1,1 @@
+Aktywny zwierzak zużywa 20 punktów procentowych energii na godzinę przy włączonym ekranie, również podczas korzystania z innych aplikacji. Po wygaszeniu ekranu odzyskuje energię w tym samym tempie.

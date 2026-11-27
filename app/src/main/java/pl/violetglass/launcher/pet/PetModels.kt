@@ -50,6 +50,7 @@ internal data class PetCareEvent(val action: PetCareAction, val startedAt: Long)
 data class PowerState(val percent: Int = 100, val plugged: Boolean = false)
 private const val EXHAUSTED_ENERGY = 8f
 internal const val RECOVERED_ENERGY = 24f
+private const val SCREEN_ENERGY_RATE_PER_HOUR = 20f
 data class PetStats(val energy: Float = 80f, val happiness: Float = 80f, val cleanliness: Float = 100f,
     val lastUpdatedTimestamp: Long = System.currentTimeMillis(), val recovering: Boolean = false, val fullness: Float = 80f) {
     val needsRest: Boolean get() = energy <= EXHAUSTED_ENERGY || recovering && energy < RECOVERED_ENERGY
@@ -57,9 +58,9 @@ data class PetStats(val energy: Float = 80f, val happiness: Float = 80f, val cle
     fun advance(now: Long, plugged: Boolean = false, sleeping: Boolean = false, away: Boolean = false): PetStats {
         val hours = (max(0L, now - lastUpdatedTimestamp).coerceAtMost(30L * 86_400_000) / 3_600_000.0).toFloat()
         val rate = when {
-            away -> 8f
+            away -> SCREEN_ENERGY_RATE_PER_HOUR
             sleeping || needsRest -> if (plugged) 12f else 3f
-            else -> -60f
+            else -> -SCREEN_ENERGY_RATE_PER_HOUR
         }
         val nextEnergy = (energy + hours * rate).coerceIn(0f, 100f)
         val nextRecovering = if (needsRest) nextEnergy < RECOVERED_ENERGY else nextEnergy <= EXHAUSTED_ENERGY

@@ -1,0 +1,1 @@
+An active pet uses 20 percentage points of energy per hour while the screen is on, including when you use other apps. With the screen off, it recovers energy at the same rate.
